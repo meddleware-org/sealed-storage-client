@@ -193,7 +193,7 @@ const tx = buildPublishSealedContentTransaction({ publishedAt, policyConfigId },
 const page = await listSealedContent(suiClient, {
   originalId,
   gateId,
-  indexer: { url: 'https://sui-indexer.meddleware.co.uk', network: 'testnet' }, // optional
+  indexer: { url: 'https://sui-indexer.meddleware.dev', network: 'testnet' }, // optional
 })
 page.pointers // newest first; page.cursor continues
 ```
