@@ -3,6 +3,10 @@
 All notable changes to `@meddleware/seal-client` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.0.26] - 2026-10-30
+
+- Point links at the machine zone (ADR-0005); depend on access-gate-client ^0.0.13 and sealed-storage-sui 0.0.11. No API change.
+
 ## [0.0.25] - 2026-10-24
 
 ### Changed

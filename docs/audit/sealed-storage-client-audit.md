@@ -39,7 +39,7 @@ scoped, not a token this package issues), no signing scripts and no image.
   2026-10-09, links `access_gate` `0xd7ddaa94…`). Mainnet publication and the Seal mainnet key-server
   terms are maintainer items (`OPERATOR_TASKS.md` "Mainnet release custody", "Mainnet Seal key servers").
 
-**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18
+**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18; 0.0.26 re-verified 2026-10-30 (Point links at the machine zone (ADR-0005); depend on access-gate-client ^0)
 **Reviewer:** Internal review
 **Severity ceiling:** High.
 
