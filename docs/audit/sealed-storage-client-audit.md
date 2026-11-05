@@ -11,10 +11,10 @@
 **Project type:** TS SDK (npm package; ships TypeScript source, no build step)
 **Template:**
 
-- AUDIT_TEMPLATE.md (2026-10-08)
+- AUDIT_TEMPLATE.md (2026-11-01)
 - AUDIT_TEMPLATE_SEAL.md (2026-09-30)
 - AUDIT_TEMPLATE_SUI_CLIENT.md (2026-10-08)
-- AUDIT_TEMPLATE_TS.md (2026-10-08)
+- AUDIT_TEMPLATE_TS.md (2026-11-01)
 
 VUE, WALRUS, AUTH, OPS and IMG are not triggered: no UI, no storage I/O (blob ids are opaque strings; the
 storage seam is the consumer's), no issued or verified credentials (the SessionKey is in-memory and
@@ -39,7 +39,7 @@ scoped, not a token this package issues), no signing scripts and no image.
   2026-10-09, links `access_gate` `0xd7ddaa94…`). Mainnet publication and the Seal mainnet key-server
   terms are maintainer items (`OPERATOR_TASKS.md` "Mainnet release custody", "Mainnet Seal key servers").
 
-**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18; 0.0.26 re-verified 2026-10-30 (Point links at the machine zone (ADR-0005); depend on access-gate-client ^0)
+**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18; 0.0.26 released 2026-10-30 (Point links at the machine zone (ADR-0005); depend on access-gate-client ^0); frontend-wave delta review 2026-11-01 (real review of the 2026-10-19 → 2026-11-01 changes; see the delta section)
 **Reviewer:** Internal review
 **Severity ceiling:** High.
 
@@ -212,6 +212,8 @@ review). The first pass recorded findings only; the fixes are in 0.0.16–0.0.19
 log).
 
 ---
+
+**2026-11-01 update.** The 0.0.26 release (2026-10-30) changed versions, generated comments and the lockfile only; this review re-ran every gate and found nothing to fix (F28, Positive).
 
 ## Threat model / trust boundaries
 
@@ -1041,6 +1043,18 @@ The README states this and `tests/integration/nft-gate.integration.test.ts` does
 
 ---
 
+### Frontend wave delta review (2026-11-01) — 0.0.26 reviewed
+
+Scope: the changes since the last substantive entry of this audit: 0.0.26 (2026-10-30: depend on `@meddleware/access-gate-client` ^0.0.13 and `@meddleware/sealed-storage-sui` 0.0.11 in the generated `deployments.ts`) after the rename and identifier alignment (2026-10-24, logged). The release tool's "re-verified" mark for the 2026-10-30 release recorded no review; this section is the review. Read the diff of the release commits (version strings and generated comments only — no source or Move change in the wave) and re-ran this repository's gates. Ran: `npm ci`; `npm audit --audit-level=high` (exit 0; nine moderate, the dev-only `minimatch` chain); `tsc --noEmit`; eslint; `vitest` (13 files, 182 tests); `npm pack --dry-run` (35 files, 144 KiB); `npm run check:deployments` — `src/deployments.ts` matches `@meddleware/sealed-storage-sui@0.0.11`.
+
+### F28 — Positive: the refreshed release passes its own gates, with nothing changed in the shipped logic
+**Severity:** Positive
+**Evidence:** the Seal client still refuses what it must (the SessionKey, identity-layout and key-server-threshold tests pass: 182) and its generated deployments are the published 0.0.11 record; the lockfile refresh changed no behaviour.
+
+### Delta notes
+- **A11Y lens:** SDK: not triggered.
+- **Supply chain:** published through the tag-gated trusted-publisher workflow with provenance (unchanged); Dependabot configuration present.
+
 ## Section A — Invariant verification matrix
 
 | # | Invariant | Enforced / asserted at | Proven by | Status |
@@ -1501,6 +1515,7 @@ OQ1–OQ5 are answered (decisions, not open items).
   - **Done:** `src/refusal.ts` (`explainApproveRefusal`, `refusalMessage`, `REASON_NOT_OWNER`, types `RefusalExplanation`, `RefusalClient`) and `SealController.explainRefusal`; read-only `simulateTransaction` as the requester, `classifyPolicyAbort` with `[originalId, publishedAt]`, the non-owner simulation error as `NOT_OWNER`, never throws on a refusal (network errors and unreadable results are `unknown` with the `cause`/`raw`). README section "Why was this decrypt refused?", CLAUDE.md key-files row, CHANGELOG, version 0.0.23.
   - **Measured:** `tsc --noEmit`, eslint, vitest 182/182 (13 files; 61 new in `tests/refusal.test.ts`), build, pack and `check:deployments` clean. Live: `tests/integration/nft-gate.integration.test.ts` (extended to assert `explainRefusal` for the positive and every negative) passed 8/8 on 2026-10-22 against the testnet committee with the maintenance runner key (balance 0.376 SUI before the run); `NOT_OWNER` observed for the non-owner, `E_WRONG_GATE`, `E_ID_NOT_NAMESPACED`, `E_EXHAUSTED`, `E_GATE_PAUSED` and `E_TOO_EARLY` named, the owner `allowed`.
   - **Dispositions (25 entries):** RESOLVED 19 (adds F27), MITIGATED 1 (F13), ADJUDICATED 2 (F16, F24), Positive 3. S8 added; Section D box added; OQ5 answered.
+- 2026-11-01 — frontend-wave delta review of 0.0.26: read the 10-30 release diff (no source change) and re-ran the gates (see the delta section); recorded F28 as Positive. The release tool's bare "re-verified" mark was reworded to "released". `**Template:**` dates reconciled to the 2026-11-01 registry with no disposition change.
 
 ## Pre-save consistency checklist (this pass)
 
