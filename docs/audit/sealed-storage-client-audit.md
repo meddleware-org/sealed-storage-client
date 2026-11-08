@@ -1275,7 +1275,7 @@ Coverage was not re-measured: the coverage plugin is not installed. The rows tha
 - [x] a stale indexer head page falls back to the full node (sui-indexer F19, the discovery half) — F26, 0.0.21 (needs access-gate-client `^0.0.10`)
 - [x] discovery can be authenticated by publisher — F6 (`publishers`, `gateOperators`; sealed-storage-ui is operator-only)
 - [x] SessionKey margin and persistence reviewed — F9 (memory-only; margin from key creation)
-- [ ] external review — maintainer item
+- [ ] external review (ADR-0009 gate G4: not a launch gate; covered by redeploy and the audit pass) — maintainer item
 
 ---
 
