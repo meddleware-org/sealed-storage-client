@@ -4,7 +4,7 @@
   "description": "Modular Seal encryption client for Sui: a pluggable policy registry (nft-gate, time-lock, …) plus a SealController that orchestrates threshold encrypt/decrypt and SessionKey lifecycle. The on-chain half is the sealed_storage Move package.",
   "homepage": "https://docs.meddleware.co.uk/blockchain/sui/sealed-storage/",
   "type": "module",
-  "author": "MeddleWare <dev@meddleware.co.uk>",
+  "author": "Meddleware <dev@meddleware.co.uk>",
   "license": "0BSD",
   "repository": {
     "type": "git",

@@ -38,8 +38,8 @@ one Move module 1:1.
     refuses a ciphertext whose identity or policy package differs from the expected ones.
   - A committee behind an aggregator counts as **one** server. `KeyServerConfig.apiKeyName` /
     `apiKey` exist for Permissioned servers and authenticated aggregators, but an API key in a
-    browser bundle is public: MeddleWare's apps use keyless servers only (workspace ADR-0002 — mainnet
-    is three Open-mode servers at threshold 2).
+    browser bundle is public: Meddleware's apps use keyless servers only (mainnet is three independent
+    Open-mode servers at threshold 2).
   - SessionKeys are cached in memory only, keyed by address **and** package.
 - **`@mysten/seal` + `@mysten/sui` are peer deps.** The consuming app supplies a single instance;
   this package must not bundle its own. `@meddleware/access-gate-client` is the one runtime

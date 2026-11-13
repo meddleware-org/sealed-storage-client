@@ -71,8 +71,8 @@ const plaintext = await seal.decrypt(
 ```
 
 A key-server committee reached through an aggregator (`aggregatorUrl`) counts as **one** server
-(its own threshold is internal, and `verifyKeyServers` is off for it). MeddleWare's apps use
-**independent keyless key servers at `threshold: 2`** (workspace ADR-0002: three Open-mode servers on
+(its own threshold is internal, and `verifyKeyServers` is off for it). Meddleware's apps use
+**independent keyless key servers at `threshold: 2`** (three independent Open-mode servers on
 mainnet), because confidentiality beyond one operator needs at least two independent ones. An API key
 (`apiKeyName` / `apiKey`, for a Permissioned server or an authenticated aggregator) is **public** once
 it ships in a browser bundle, so do not rely on one for secrecy.
