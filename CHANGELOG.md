@@ -3,6 +3,10 @@
 All notable changes to `@meddleware/seal-client` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.0.27] - 2026-11-13
+
+- Added `SEAL_COMMITTEES` (testnet committee; mainnet `undefined` until publication), `SEAL_COMMITTEES_PENDING`, `sealCommittee()` and `committeeServerConfigs()`, exported from the entry and the `./deployments` subpath.
+
 ## [0.0.26] - 2026-10-30
 
 - Point links at the machine zone (ADR-0005); depend on access-gate-client ^0.0.13 and sealed-storage-sui 0.0.11. No API change.

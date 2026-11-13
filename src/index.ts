@@ -58,4 +58,13 @@ export {
 } from './refusal.js'
 export { gateOperators } from './operators.js'
 export { assertLinkedGate } from './gate-check.js'
+export {
+  SEAL_COMMITTEES,
+  SEAL_COMMITTEES_PENDING,
+  committeeServerConfigs,
+  sealCommittee,
+  type SealCommittee,
+  type SealCommitteeNetwork,
+  type SealCommitteeServer,
+} from './committees.js'
 // Deployment ids are in the `@meddleware/sealed-storage-client/deployments` subpath.

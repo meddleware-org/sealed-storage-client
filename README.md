@@ -85,6 +85,40 @@ independent servers runs without URL verification for the independent ones too �
 `controller.verifiesKeyServers` tells you); `checkShareConsistency` is on; and `decrypt` refuses a ciphertext whose
 header names a different identity or policy package than expected.
 
+## Key-server committees
+
+`SEAL_COMMITTEES` is the one record of the key servers Meddleware's apps seal to, per network:
+`{ threshold, servers: [{ name, objectId, weight, url? }] }`. It is data only, exported from the main
+entry and from `@meddleware/sealed-storage-client/deployments`. A server's `url` is set only for a
+committee reached through an aggregator (it becomes `aggregatorUrl`); an independent server publishes
+its URL on-chain.
+
+- **`testnet`** — Mysten's decentralised committee behind its aggregator (one server) plus two Mysten
+  Open-mode servers, `threshold: 2`.
+- **`mainnet`** — `undefined`: **not published**. The ids are added with the mainnet record at
+  publication. `SEAL_COMMITTEES_PENDING.mainnet` already names the decided operators (Overclock,
+  NodeInfra, H2O Open mode) and `threshold: 2`.
+
+Because a network may be unpublished, the type of an entry is `SealCommittee | undefined`; handle it,
+or use `sealCommittee(network)`, which throws when there is none.
+
+```ts
+import { SealController, committeeServerConfigs, sealCommittee } from '@meddleware/sealed-storage-client'
+
+const committee = sealCommittee('testnet') // throws for mainnet until it is published
+const seal = new SealController(
+  {
+    suiClient,
+    originalId,
+    publishedAt,
+    policyConfigId,
+    serverConfigs: committeeServerConfigs(committee), // KeyServerConfig[]
+    threshold: committee.threshold,
+  },
+  registry,
+)
+```
+
 ## Package ids
 
 `sealed_storage` has two package ids per network, and they differ once the package is upgraded:

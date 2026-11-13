@@ -95,6 +95,17 @@ export function sealPoliciesDeployment(network: string): SealPoliciesDeployment 
   if (!deployment) throw new Error(\`no sealed_storage deployment recorded for \${network}\`)
   return deployment
 }
+
+// The Seal key-server committees live in ./committees.ts (hand-written data, one owner); re-exported so this subpath carries them.
+export {
+  SEAL_COMMITTEES,
+  SEAL_COMMITTEES_PENDING,
+  committeeServerConfigs,
+  sealCommittee,
+  type SealCommittee,
+  type SealCommitteeNetwork,
+  type SealCommitteeServer,
+} from './committees.js'
 `
 
 if (process.argv.includes('--check')) {

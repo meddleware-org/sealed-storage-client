@@ -69,6 +69,7 @@ one Move module 1:1.
 | `src/providers/timelock.ts` | Clock-based time-lock policy (`0x6`). |
 | `src/sealed-content.ts` | Discovery pointers: publish builders, `listSealedContent` (full node / indexer), BCS event parser. |
 | `src/deployments.ts` | GENERATED `sealed_storage` ids per network (subpath `./deployments`). |
+| `src/committees.ts` | `SEAL_COMMITTEES`: the one owner of the Seal key-server object ids per network (testnet; mainnet `undefined` until publication, `SEAL_COMMITTEES_PENDING` names the decided operators). Hand-written data, re-exported by the generated `./deployments`; `sealCommittee`, `committeeServerConfigs`. |
 | `src/aborts.ts` | `sealed_storage` abort codes keyed by `(module, code)` (`POLICY_ABORTS`, `classifyPolicyAbort`): the codes overlap between modules, so never match on the code alone. `tests/aborts.test.ts` compares the table with the Move constants when sealed-storage-sui is checked out beside this repo. |
 | `src/refusal.ts` | `explainApproveRefusal` / `SealController.explainRefusal`: simulates the approve PTB as the requester (read-only `simulateTransaction`) and returns `{ kind: 'allowed' \| 'refused' \| 'unknown', reason?, module?, code?, message, … }`. A key server's refusal carries no Move abort, so apps call this after a `NoAccessError`; `decrypt` never calls it (extra RPC). It does not throw on a refusal. |
 | `src/bytes.ts` | Hex/id/u64-BE/nonce/concat helpers — the single source of identity-byte truth. |

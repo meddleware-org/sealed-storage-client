@@ -39,7 +39,7 @@ scoped, not a token this package issues), no signing scripts and no image.
   2026-10-09, links `access_gate` `0xd7ddaa94…`). Mainnet publication and the Seal mainnet key-server
   terms are maintainer items (`OPERATOR_TASKS.md` "Mainnet release custody", "Mainnet Seal key servers").
 
-**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18; 0.0.26 released 2026-10-30 (Point links at the machine zone (ADR-0005); depend on access-gate-client ^0); frontend-wave delta review 2026-11-01 (real review of the 2026-10-19 → 2026-11-01 changes; see the delta section)
+**Review date:** 2026-10-03; re-verified 2026-10-09; fix wave 2026-10-18; release status 2026-10-18; 0.0.26 released 2026-10-30 (Point links at the machine zone (ADR-0005); depend on access-gate-client ^0); FU-0062 committee record 2026-11-13 (0.0.27, local); frontend-wave delta review 2026-11-01 (real review of the 2026-10-19 → 2026-11-01 changes; see the delta section)
 **Reviewer:** Internal review
 **Severity ceiling:** High.
 
@@ -1516,6 +1516,9 @@ OQ1–OQ5 are answered (decisions, not open items).
   - **Measured:** `tsc --noEmit`, eslint, vitest 182/182 (13 files; 61 new in `tests/refusal.test.ts`), build, pack and `check:deployments` clean. Live: `tests/integration/nft-gate.integration.test.ts` (extended to assert `explainRefusal` for the positive and every negative) passed 8/8 on 2026-10-22 against the testnet committee with the maintenance runner key (balance 0.376 SUI before the run); `NOT_OWNER` observed for the non-owner, `E_WRONG_GATE`, `E_ID_NOT_NAMESPACED`, `E_EXHAUSTED`, `E_GATE_PAUSED` and `E_TOO_EARLY` named, the owner `allowed`.
   - **Dispositions (25 entries):** RESOLVED 19 (adds F27), MITIGATED 1 (F13), ADJUDICATED 2 (F16, F24), Positive 3. S8 added; Section D box added; OQ5 answered.
 - 2026-11-01 — frontend-wave delta review of 0.0.26: read the 10-30 release diff (no source change) and re-ran the gates (see the delta section); recorded F28 as Positive. The release tool's bare "re-verified" mark was reworded to "released". `**Template:**` dates reconciled to the 2026-11-01 registry with no disposition change.
+- 2026-11-13 (0.0.27, local commit, not released) — FU-0062: one owner for the Seal committee ids.
+  - **Done:** `src/committees.ts` (`SEAL_COMMITTEES`: testnet committee, mainnet `undefined` until publication; `SEAL_COMMITTEES_PENDING` names the decided mainnet operators and threshold 2 without any object id; `sealCommittee()` throws when unpublished; `committeeServerConfigs()` builds `KeyServerConfig[]`), exported from the entry and re-exported by the generated `./deployments` subpath; README section "Key-server committees"; CHANGELOG; version 0.0.27. Data only: no controller, provider or identity-layout change. The testnet ids and threshold are those of sealed-storage-ui's `SERVER_DEFAULTS`, which still holds its own copy until it takes this record.
+  - **Measured:** `tsc --noEmit`, eslint, vitest 189/189 (14 files; 7 new in `tests/committees.test.ts`: shape, 0x + 64 lowercase hex in canonical form, threshold within total weight, no duplicate ids, mainnet not published, exports), build, pack (37 files) and `check:deployments` clean. No finding opened or closed; dispositions unchanged.
 
 ## Pre-save consistency checklist (this pass)
 
