@@ -115,3 +115,7 @@ testnet `publishedAt` (public or entry, same type-parameter and parameter counts
 - Running the client against an operator's **own `sealed_storage` deployment + key-server committee**:
   which config to change (`originalId`/`publishedAt`, `serverConfigs`, `threshold`, network) and how policy sets are
   operator-defined by which providers/modules they ship.
+
+## Interoperability
+
+- [docs/INTEROP.md](docs/INTEROP.md): the standards this project speaks, what is planned, where to extend it, and what proves each claim.
