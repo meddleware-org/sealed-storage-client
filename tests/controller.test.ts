@@ -1,3 +1,8 @@
+/**
+ * Tests for `SealController` (`src/controller.ts`) with the Seal SDK stubbed (no key-server IO): the session key is minted once, cached, evicted and shared by concurrent
+ * decrypts; the cache margin counts from key creation; a ciphertext for another identity or policy package is refused before any key is requested; the approve
+ * transaction may hold only `seal_approve*` calls; encrypt binds to the ORIGINAL id and checks the gate (including that it mints soulbound passes).
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Stub @mysten/seal so no key-server IO happens: SealClient.decrypt returns bytes, and
@@ -28,6 +33,7 @@ vi.mock('@mysten/seal', () => ({
   EncryptedObject: { parse: parseSpy },
 }))
 
+// Imported after the mock is registered, so the controller sees the stubbed SDK.
 import { SealController } from '../src/controller.js'
 import { PolicyRegistry } from '../src/registry.js'
 import type { SealPolicyProvider } from '../src/types.js'
@@ -46,6 +52,7 @@ const noopProvider: SealPolicyProvider = {
   describe: () => ({ type: 'noop', label: '', help: '', encryptFields: [], decryptFields: [] }),
 }
 
+/** A controller over the no-op provider with one key server and threshold 1 (the simplest valid committee). */
 function makeController() {
   const registry = new PolicyRegistry().register(noopProvider)
   const suiClient = {} as never
@@ -53,8 +60,10 @@ function makeController() {
   return new SealController(cfg, registry)
 }
 
+/** Decrypt options with a counting wallet signer. */
 const opts = { address: '0xabc', signPersonalMessage: vi.fn(async () => ({ signature: 'sig' })) }
 
+// A clean slate per test: the default ciphertext header matches id `00` under package 0x1, and the spies are reset.
 beforeEach(() => {
   parseSpy.mockImplementation(() => ({ id: '00', packageId: '0x1' }))
   createSpy.mockClear()
@@ -76,6 +85,7 @@ describe('nft-gate provider verifyId (F5 — id↔params cross-check)', () => {
     expect(() => provider.verifyId!(idBytes, { gateId: GATE_ID })).toThrow('mismatch')
   })
 
+  // The provider's check must run inside the controller, before the approve transaction is built.
   it('controller rejects decrypt with mismatched id/params before PTB build', async () => {
     const registry = new PolicyRegistry().register(createNftGateProvider())
     const suiClient = {} as never
@@ -117,6 +127,7 @@ describe('SealController SessionKey lifecycle', () => {
 })
 
 describe('SealController ciphertext and committee checks', () => {
+  // The ciphertext names the identity it was sealed to; a swapped ciphertext or tampered manifest would otherwise ask the servers for the wrong key.
   it('refuses to decrypt a ciphertext sealed to a different identity', async () => {
     parseSpy.mockImplementation(() => ({ id: 'ff', packageId: '0x1' }))
     await expect(makeController().decrypt('noop', {}, '00', new Uint8Array(), opts)).rejects.toThrow(
@@ -131,6 +142,7 @@ describe('SealController ciphertext and committee checks', () => {
     )
   })
 
+  // One server of weight 1 cannot satisfy a threshold of 2: the data would be unrecoverable, so the constructor refuses.
   it('rejects a threshold above the total server weight', () => {
     const registry = new PolicyRegistry().register(noopProvider)
     expect(
@@ -145,6 +157,7 @@ describe('SealController ciphertext and committee checks', () => {
 
 describe('SealController after a package upgrade', () => {
   it('seals and scopes sessions at the original id, and calls seal_approve at published-at', async () => {
+    // After an upgrade the two ids differ (0x1 original, 0x9 published-at): sessions and the namespace use the first, the call uses the second.
     const approveTargets: Array<{ publishedAt: string; policyConfigId: string }> = []
     const recording: SealPolicyProvider = {
       ...noopProvider,
@@ -173,9 +186,11 @@ describe('SealController after a package upgrade', () => {
 })
 
 describe('approve PTB and identity checks (SEAL lens)', () => {
+  // A one-byte identity and a ciphertext placeholder: the SDK is stubbed, so only the checks before it matter.
   const ID = '00'
   const sealed = new Uint8Array([1])
 
+  /** A controller over exactly one provider. */
   function controllerWith(provider: SealPolicyProvider) {
     const registry = new PolicyRegistry().register(provider)
     const cfg = { suiClient: {} as never, originalId: '0x1', publishedAt: '0x1', policyConfigId: '0x7', serverConfigs: [{ objectId: '0xs' }], threshold: 1 }
@@ -183,6 +198,7 @@ describe('approve PTB and identity checks (SEAL lens)', () => {
   }
 
   it('refuses an approve PTB with anything but seal_approve* calls to the policy package', async () => {
+    // Three misbehaving providers: one adds a non-approve call, one calls another package, one builds nothing.
     const extra: SealPolicyProvider = {
       ...noopProvider,
       type: 'extra',
@@ -215,6 +231,7 @@ describe('approve PTB and identity checks (SEAL lens)', () => {
 })
 
 describe('encrypt binds to the original id (not published-at) and the configured threshold', () => {
+  // Different original and published-at ids, a committee of two and threshold 2 (read from the `thresh…` field below), and an optional client.
   const ORIGINAL = '0x' + '11'.repeat(32)
   const PUBLISHED = '0x' + '22'.repeat(32)
   const mk = (extra: Record<string, unknown> = {}, suiClient: unknown = {}) =>
@@ -231,6 +248,7 @@ describe('encrypt binds to the original id (not published-at) and the configured
   })
 
   it('reads the gate first and refuses one that is not a Gate of the linked access_gate package', async () => {
+    // The linked access_gate package and a gate; the client answers `getObject` with an object of the given type.
     const LINKED = '0x' + 'a5'.repeat(32)
     const GATE = '0x' + '0a'.repeat(32)
     const client = (type?: string, json: Record<string, unknown> = { soulbound: true }) => ({
@@ -239,6 +257,7 @@ describe('encrypt binds to the original id (not published-at) and the configured
     encryptSpy.mockClear()
     await mk({ accessGateOriginalId: LINKED }, client(`${LINKED}::access_gate::Gate`)).encrypt('nft-gate', { gateId: GATE }, new Uint8Array([1]))
     expect(encryptSpy).toHaveBeenCalledTimes(1)
+    // A look-alike package, another struct, another module and an untyped object: each must be refused before anything is encrypted.
     for (const type of [`${'0x' + 'b6'.repeat(32)}::access_gate::Gate`, `${LINKED}::access_gate::AdminCap`, `${LINKED}::other::Gate`, undefined]) {
       encryptSpy.mockClear()
       await expect(mk({ accessGateOriginalId: LINKED }, client(type)).encrypt('nft-gate', { gateId: GATE }, new Uint8Array([1]))).rejects.toThrow(/not a Gate of the linked/)
@@ -248,6 +267,7 @@ describe('encrypt binds to the original id (not published-at) and the configured
 })
 
 describe('encrypt and transferable gates', () => {
+  // A controller whose gate has the given JSON (`soulbound` true or false, or no fields at all).
   const LINKED = '0x' + 'a5'.repeat(32)
   const GATE = '0x' + '0a'.repeat(32)
   const mk = (extra: Record<string, unknown>, json: Record<string, unknown> | null) =>
@@ -262,6 +282,7 @@ describe('encrypt and transferable gates', () => {
 
   it('refuses a gate that mints transferable passes (a holder can freeze one into public access)', async () => {
     encryptSpy.mockClear()
+    // A transferable pass can be frozen or shared by its holder, after which anyone can present it: the content would be effectively public. A gate whose flag cannot be read is refused too.
     await expect(mk({}, { soulbound: false }).encrypt('nft-gate', { gateId: GATE }, new Uint8Array([1]))).rejects.toThrow(/transferable passes/)
     await expect(mk({}, null).encrypt('nft-gate', { gateId: GATE }, new Uint8Array([1]))).rejects.toThrow(/transferable passes/)
     expect(encryptSpy).not.toHaveBeenCalled()
@@ -277,6 +298,7 @@ describe('encrypt and transferable gates', () => {
 
 describe('SessionKey cache timing and coalescing', () => {
   it('counts the early-expiry margin from key creation, not from when the slow signature returns', async () => {
+    // Fake the clock so five minutes of waiting costs no real time.
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_000_000)
@@ -286,6 +308,7 @@ describe('SessionKey cache timing and coalescing', () => {
         return { signature: 'sig' }
       })
       await c.decrypt('noop', {}, '00', new Uint8Array(), { address: '0xabc', signPersonalMessage: slowSign })
+      // The key is cached from its CREATION time, not from when the wallet answered (the signed message carries the creation time).
       createSpy.mockClear()
       // sessionTtlMin default 10 → valid until created + 9 min; now is created + 5 min: still cached.
       await c.decrypt('noop', {}, '00', new Uint8Array(), { address: '0xabc', signPersonalMessage: slowSign })
@@ -299,6 +322,7 @@ describe('SessionKey cache timing and coalescing', () => {
   })
 
   it('concurrent decrypts share one mint and one wallet prompt', async () => {
+    // A signer that takes a moment, so the three decrypts overlap and must share the one mint.
     const c = makeController()
     const sign = vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 10))

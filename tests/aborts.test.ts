@@ -1,9 +1,16 @@
+/**
+ * Tests for the policy abort table and finder (`src/aborts.ts`): codes are keyed by (module, code) because the small codes overlap, every wording a client or
+ * node uses is read, an abort is named only when it came from this policy's package, and the table mirrors the Move constants when the Move package is checked
+ * out next to this repository.
+ */
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { POLICY_ABORTS, classifyPolicyAbort, describePolicyAbort, parseMoveAbort } from '../src/aborts.js'
 
+/** The policy package's id in the fixtures. */
 const POLICY = '0x' + '0c'.repeat(32)
+/** Another package's id, for the look-alike cases. */
 const OTHER = '0x' + 'd7'.repeat(32)
 
 /** The message the Sui clients build for a Move abort (`formatMoveAbortMessage`). */
@@ -19,6 +26,7 @@ describe('policy abort map (S7 / OQ5)', () => {
     expect(describePolicyAbort('config', 1)).toMatchObject({ name: 'E_WRONG_VERSION' })
   })
 
+  // The reason the table is keyed by both: code 1 is four different errors.
   it('keys on (module, code): the same code means different things in different modules', () => {
     const ones = POLICY_ABORTS.filter((a) => a.code === 1).map((a) => `${a.module}:${a.name}`)
     expect(ones).toEqual([
@@ -34,6 +42,7 @@ describe('policy abort map (S7 / OQ5)', () => {
   })
 
   it('knows nothing of a code the modules do not define, of another module, or of a non-number', () => {
+    // An unused code, a code of another module, another package's module, a word and a numeric string (which is accepted).
     expect(describePolicyAbort('nft_gate', 5)).toBeUndefined()
     expect(describePolicyAbort('config', 3)).toBeUndefined()
     expect(describePolicyAbort('access_gate', 4)).toBeUndefined()
@@ -60,6 +69,7 @@ describe('policy abort map (S7 / OQ5)', () => {
     expect(parseMoveAbort(undefined)).toBeUndefined()
     expect(parseMoveAbort(42)).toBeUndefined()
     expect(parseMoveAbort({ abortCode: 'x' })).toBeUndefined()
+    // An error whose cause is itself: the depth limit must stop the walk.
     const a: { message: string; cause?: unknown } = { message: 'a' }
     a.cause = a
     expect(parseMoveAbort(a)).toBeUndefined()
@@ -90,6 +100,7 @@ describe('policy abort map (S7 / OQ5)', () => {
 })
 
 // The table mirrors the Move constants. When the policy package is checked out next to this repo, compare them.
+// (Skipped in CI, where only this repository is checked out; the version gate there is the exactly-pinned `sealed-storage-sui` and the live suite.)
 const SOURCES = fileURLToPath(new URL('../../sealed-storage-sui/sources/', import.meta.url))
 describe.skipIf(!existsSync(SOURCES))('policy abort map matches sealed-storage-sui', () => {
   for (const module of ['config', 'nft_gate', 'timelock', 'sealed_content'] as const) {

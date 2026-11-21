@@ -1,3 +1,7 @@
+/**
+ * Tests for the recorded `sealed_storage` deployments (`src/deployments.ts`): ids are full length, and prototype names or unknown networks throw instead of
+ * resolving to something.
+ */
 import { describe, it, expect } from 'vitest'
 import { SEAL_POLICIES_DEPLOYMENTS, sealPoliciesDeployment } from '../src/deployments.js'
 
@@ -9,6 +13,7 @@ describe('deployments', () => {
     expect(SEAL_POLICIES_DEPLOYMENTS.testnet).toBe(t)
   })
 
+  // `Object.hasOwn` in the lookup is what makes these throw; a plain `[network]` would return a function.
   it('does not resolve Object prototype members as networks', () => {
     for (const name of ['constructor', 'toString', '__proto__']) {
       expect(() => sealPoliciesDeployment(name)).toThrow(/no sealed_storage deployment recorded/)

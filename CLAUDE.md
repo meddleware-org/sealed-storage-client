@@ -75,6 +75,18 @@ one Move module 1:1.
 | `src/bytes.ts` | Hex/id/u64-BE/nonce/concat helpers — the single source of identity-byte truth. |
 | `src/index.ts` | Public surface (types, registry, controller, providers, sealed-content helpers). |
 
+## Commands
+
+```bash
+npm ci && npm run type-check && npm run lint && npm test   # the core of what the `check` CI job runs
+npm run check:deployments                                  # src/deployments.ts matches @meddleware/sealed-storage-sui (npm run gen:deployments rewrites it)
+npm run build                                              # the .d.ts files in dist/ (the only build output)
+npm audit --audit-level=high                               # the dependency check (this repo does not use mw-audit-gate)
+npm run test:integration                                   # live read-only suite against public testnet; CI runs it weekly (live.yml)
+```
+
+Release: bump `version`, push, tag `v<version>`; `npm-publish.yml` re-runs the checks on the tagged commit and publishes with npm trusted publishing.
+
 ## ABI drift
 
 `tests/abi-table.ts` lists every exported builder and every default-registry provider; the offline
@@ -90,6 +102,26 @@ testnet `publishedAt` (public or entry, same type-parameter and parameter counts
 - Do not bundle `@mysten/seal` / `@mysten/sui`; they are peers.
 
 ---
+
+## Gotchas
+
+- **Public full nodes prune events.** `listEvents` on a quiet package rejects with "requested data below earliest available" instead of returning an empty page. The live
+  tests skip on it (`tests/integration/pruned.ts`); the library lets the error through. The weekly `live.yml` run failed three times (2026-11-02, 11-09, 11-16); the cause was
+  reproduced on 2026-11-21 and the tests fixed (audit F29).
+- **`src/deployments.ts` is generated.** Edit `scripts/gen-deployments.mjs` (its template carries the comments), never the file; `check:deployments` fails on drift. The committees
+  in `src/committees.ts` are hand-written data with one owner and are re-exported by the generated file.
+- **The funded nft-gate round trip is maintainer-run.** It needs a funded testnet key (`SEAL_LIVE_KEY_FILE`), which must never be a CI secret; it skips itself in CI.
+- **There is no `mw-audit-gate`.** This repository does not depend on `@meddleware/frontend-config`; CI runs `npm audit --audit-level=high`.
+- **`SealController`, `describeCiphertext` and `sealedUnderServers` are on the `./controller` subpath** (the app loads it lazily because it pulls in the Seal SDK); the root entry exports
+  the controller class too but not the two header helpers.
+- **A new `build*Tx` or policy needs an entry in `tests/abi-table.ts`**, or `tests/abi-table.test.ts` fails.
+
+## Related
+
+- The audit: [`docs/audit/sealed-storage-client-audit.md`](docs/audit/sealed-storage-client-audit.md).
+- How to propose a change: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Consumers: `sealed-storage-ui` and `dashboard-ui` (`^0.0.27`), `docs-site`, `dev-site` and `landing-site` (`^0.0.26`); release them after this package. The Move package: `sealed-storage-sui`;
+  the chain reads and the indexer reader: `access-gate-client`.
 
 ## Deferred documentation — NOT for the `docs.` website (planned here per Part 0.4)
 

@@ -1,15 +1,23 @@
+/**
+ * Tests for the two built-in policy providers (`src/providers/`): the identity layouts (32-byte gate id + 16-byte nonce; 8-byte big-endian unlock time + 8-byte nonce),
+ * the `seal_approve*` calls they build and the argument order, the refusals (zero gate, past or wrapping unlock time), nonce uniqueness, and the nft-gate suggestions.
+ * The layouts and the call shapes must change together with the Move modules, which the live suite checks.
+ */
 import { describe, it, expect, vi } from 'vitest'
 import { Transaction } from '@mysten/sui/transactions'
 import { createNftGateProvider } from '../src/providers/nft-gate.js'
 import { timeLockProvider } from '../src/providers/timelock.js'
 import { objectIdBytes, u64beBytes, bytesToHex } from '../src/bytes.js'
 
+// Placeholder ids: a gate, a pass NFT, the policy package and its PolicyConfig, each distinct so an argument in the wrong place is visible.
 const GATE = '0x' + '11'.repeat(32)
 const NFT = '0x' + '22'.repeat(32)
 const PKG = '0x' + 'ab'.repeat(32)
 const POLICY = '0x' + 'cc'.repeat(32)
+/** The call target the builders are given. */
 const TARGET = { publishedAt: PKG, policyConfigId: POLICY }
 
+/** An nft-gate provider with no access_gate id (so no chain suggestions). */
 const nftGateProvider = createNftGateProvider()
 
 describe('nftGateProvider', () => {
@@ -35,6 +43,7 @@ describe('nftGateProvider', () => {
     const data = tx.getData()
     const call = data.commands[0]!.MoveCall!
     expect(call.package).toBe(PKG)
+    // Skip the first argument (the identity bytes); the rest are objects, in the Move function's order.
     const objectIds = call.arguments.slice(1).map((a) => (a as { Input: number }).Input).map((i) => data.inputs[i]!.UnresolvedObject?.objectId)
     expect(objectIds).toEqual([POLICY, GATE, NFT])
   })
@@ -62,6 +71,7 @@ describe('timeLockProvider', () => {
     expect(bytesToHex(id.slice(0, 8))).toBe(bytesToHex(u64beBytes(256)))
   })
 
+  // The zero gate id is the dangerous one: it would encrypt successfully to a gate nobody controls.
   it('nft-gate refuses an empty, 0x-only, non-hex or zero gate id (it would namespace to a gate nobody can unlock)', () => {
     for (const gateId of ['', '0x', '0x0', '0x' + '00'.repeat(32), 'gate', '0xzz', '0x' + 'a'.repeat(65)]) {
       expect(() => nftGateProvider.buildId({ gateId }), gateId).toThrow()
@@ -74,6 +84,7 @@ describe('timeLockProvider', () => {
     const id = timeLockProvider.buildId({ unlockMs: 1000, allowPast: true })
     timeLockProvider.buildApprove(tx, TARGET, id, {})
     const data = tx.getData()
+    // The Clock (object 0x6) is the second object: there is no pass to present.
     expect(JSON.stringify(data)).toContain('timelock')
     const call = data.commands[0]!.MoveCall!
     const objectIds = call.arguments.slice(1).map((a) => (a as { Input: number }).Input).map((i) => data.inputs[i]!.UnresolvedObject?.objectId)
@@ -81,6 +92,7 @@ describe('timeLockProvider', () => {
   })
 
   it('refuses an unlock time that would wrap, or that has already passed', () => {
+    // A time past 2^64 would wrap to a small number and unlock at once; a time in the past would make the content public the instant it is stored. Both are refused unless allowed.
     expect(() => timeLockProvider.buildId({ unlockMs: 2n ** 64n })).toThrow(/at most/)
     expect(() => timeLockProvider.buildId({ unlockMs: 2 ** 64 })).toThrow(/safe integer/)
     expect(() => timeLockProvider.buildId({ unlockMs: Date.now() - 1000 })).toThrow(/not in the future/)
@@ -144,6 +156,7 @@ describe('nft-gate verifyId layout', () => {
 })
 
 describe('nft-gate suggest', () => {
+  // The access_gate package, an admin cap, and a client whose owner holds one cap of the given type (over two pages).
   const ORIGINAL = '0x' + 'a1'.repeat(32)
   const CAP = '0x' + '33'.repeat(32)
   const client = (capType: string) => ({
@@ -186,6 +199,7 @@ describe('nft-gate suggest', () => {
   })
 
   it('ignores caps of a look-alike package', async () => {
+    // A cap of a different package: its gate must not be suggested.
     const c = client(`0x${'a2'.repeat(32)}::access_gate::AdminCap`)
     expect(await createNftGateProvider(ORIGINAL).suggest!({ account: '0xabc', client: c })).toEqual({})
   })

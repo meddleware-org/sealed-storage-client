@@ -40,6 +40,7 @@ const SERVER_CONFIGS = [
 ]
 const THRESHOLD = 2
 
+/** A gRPC client for the public testnet full node. */
 function makeSuiClient() {
   return new SuiGrpcClient({
     network: 'testnet',
@@ -47,6 +48,7 @@ function makeSuiClient() {
   })
 }
 
+/** A controller over the recorded deployment and the testnet committee, with the default registry. */
 function makeController(suiClient: SuiGrpcClient) {
   return new SealController(
     {

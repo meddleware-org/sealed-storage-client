@@ -260,14 +260,24 @@ page.pointers // newest first; page.cursor continues
 4. If it ships in the default registry, add it to `PROVIDERS` in `tests/abi-table.ts` (the offline
    test fails until you do); the testnet ABI-drift check then covers its `seal_approve*`.
 
-## Scripts
+## Development
+
+The package ships its TypeScript source plus a declaration-only build. The checks, all run in CI on every push (`.github/workflows/node-ci.yml`; the tests also run on
+Node 24, the minimum in `engines`):
 
 ```sh
-npm run type-check
-npm test
-npm run check:deployments   # src/deployments.ts matches @meddleware/sealed-storage-sui
-npm run test:integration    # live testnet (key servers + full node, ABI drift)
+npm ci                       # install exactly the lockfile
+npm run type-check           # tsc over src/ and tests/
+npm run lint                 # eslint (typescript-eslint recommended)
+npm test                     # 189 offline unit tests; the Seal SDK is stubbed, so no key server is contacted
+npm run check:deployments    # src/deployments.ts matches @meddleware/sealed-storage-sui
+npm run build                # the .d.ts files in dist/
+npm audit --audit-level=high # the dependency check
+npm run test:integration     # live testnet (key servers + full node, ABI drift); CI runs it weekly
 ```
+
+How to propose a change: [CONTRIBUTING.md](CONTRIBUTING.md). A public full node keeps only recent history, so the live event tests skip when the node answers
+"requested data below earliest available" (the weekly run had failed on it since 2026-11-02).
 
 ### Live nft-gate round trip with negatives (maintainer-run, spends testnet SUI)
 

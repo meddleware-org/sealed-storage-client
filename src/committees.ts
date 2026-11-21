@@ -1,6 +1,10 @@
 // The Seal key-server committees Meddleware's apps seal to, per network: the single owner of these
 // ids (workspace FU-0062). Data only. `deployments.ts` (generated) re-exports this module, so the
 // `./deployments` subpath carries it too.
+//
+// Role: which key servers a person's data is sealed to, and how many must cooperate to open it. A wrong id here would seal data to a server that does not exist
+// (unrecoverable) or to one Meddleware does not trust, so the ids are recorded in one place, with the decision (ADR-0002, D24) beside them.
+// Main exports: `SEAL_COMMITTEES`, `sealCommittee`, `committeeServerConfigs`. Tested in `tests/committees.test.ts`; the on-chain objects are checked by the live suite.
 import type { KeyServerConfig } from './controller.js'
 
 /** One key server of a committee. */
@@ -20,7 +24,9 @@ export interface SealCommitteeServer {
 
 /** A published committee: `threshold` is `t` in t-of-n over the servers' total weight. */
 export interface SealCommittee {
+  /** How much weight must cooperate to open data (`t`). */
   threshold: number
+  /** The servers of the committee. */
   servers: readonly SealCommitteeServer[]
 }
 
@@ -58,7 +64,7 @@ export const SEAL_COMMITTEES: {
       },
     ],
   },
-  // Mainnet: filled with the mainnet record at publication. No object ids are recorded until then.
+  // Mainnet: filled with the mainnet record at publication. No object ids are recorded until then (an invented id would seal data to nothing).
   mainnet: undefined,
 }
 
@@ -82,6 +88,7 @@ export const SEAL_COMMITTEES_PENDING = {
  * @throws {Error} if no committee is published for `network` (unknown network, or mainnet before publication).
  */
 export function sealCommittee(network: string): SealCommittee {
+  // `Object.hasOwn` so a name like `constructor` is not found on the prototype chain.
   const committee = Object.hasOwn(SEAL_COMMITTEES, network) ? (SEAL_COMMITTEES as Record<string, SealCommittee | undefined>)[network] : undefined
   if (!committee) throw new Error(`no Seal key-server committee is published for ${network}`)
   return committee
@@ -89,5 +96,6 @@ export function sealCommittee(network: string): SealCommittee {
 
 /** The `SealController` `serverConfigs` for a committee (a server's `url` becomes its `aggregatorUrl`). */
 export function committeeServerConfigs(committee: SealCommittee): KeyServerConfig[] {
+  // The aggregator URL is set only for a server reached through an aggregator; an independent server's URL is read from the chain.
   return committee.servers.map((s) => ({ objectId: s.objectId, weight: s.weight, ...(s.url ? { aggregatorUrl: s.url } : {}) }))
 }

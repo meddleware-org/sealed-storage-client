@@ -1,3 +1,8 @@
+/**
+ * Tests for explaining a refusal (`src/refusal.ts` and `SealController.explainRefusal`): every abort of the table is named from a structured status and from text, a
+ * different package's abort is reported but not named, a requester who does not own the pass is a refusal (`NOT_OWNER`), anything unreadable is `unknown` and never
+ * throws, and the controller simulates the same approve transaction a decrypt would send, read-only, as the requester.
+ */
 import { describe, it, expect, vi } from 'vitest'
 
 // The controller imports @mysten/seal; stub it so no key-server IO can happen (explainRefusal never uses it).
@@ -17,6 +22,7 @@ import type { RefusalClient } from '../src/refusal.js'
 import { PolicyRegistry } from '../src/registry.js'
 import type { SealPolicyProvider } from '../src/types.js'
 
+// Three package ids (the policy's original and published-at, and another package) and the requester's address.
 const ORIGINAL = '0x' + 'a1'.repeat(32)
 const PUBLISHED = '0x' + 'b2'.repeat(32)
 const OTHER_PKG = '0x' + 'c3'.repeat(32)
@@ -39,19 +45,23 @@ function abortResult(module: string, code: number, pkg = PUBLISHED) {
     },
   }
 }
+/** A simulation result in which the approve call succeeds. */
 const okResult = { $kind: 'Transaction', Transaction: { status: { success: true, error: null } } }
 
+/** A client whose only method, `simulateTransaction`, returns (or rejects with) what `answer` says; the spy records the calls. */
 function fakeClient(answer: () => unknown | Promise<unknown>) {
   const simulateTransaction = vi.fn(async (_: unknown) => answer())
   const client: RefusalClient = { core: { simulateTransaction } }
   return { client, simulateTransaction }
 }
 
+/** A transaction holding one `seal_approve` call to the published package. */
 function approveTx() {
   const tx = new Transaction()
   tx.moveCall({ target: `${PUBLISHED}::noop::seal_approve`, arguments: [tx.pure.vector('u8', [0])] })
   return tx
 }
+/** Explain a refusal for `approveTx()` as `SENDER`, with the policy package ids the controller would pass. */
 const explain = (client: RefusalClient) =>
   explainApproveRefusal(client, approveTx(), { sender: SENDER, policyPackageIds: [ORIGINAL, PUBLISHED] })
 
@@ -66,6 +76,7 @@ describe('explainApproveRefusal: every abort of the sealed_storage table', () =>
       expect(r.raw).toBeDefined()
     })
 
+    // The same abort with no structured fields, only the message text a wallet would show.
     it(`${abort.module}::${abort.name} is read from the message alone`, async () => {
       const text = `MoveAbort in 1st command, abort code: ${abort.code}, in '${ORIGINAL}::${abort.module}::seal_approve' (instruction 3)`
       const { client } = fakeClient(() => ({
@@ -75,6 +86,7 @@ describe('explainApproveRefusal: every abort of the sealed_storage table', () =>
       expect(await explain(client)).toMatchObject({ kind: 'refused', reason: abort.name, module: abort.module, code: abort.code })
     })
 
+    // Every abort has a message written for people; the developer-facing `meaning` is only the fallback for a new abort.
     it(`${abort.module}::${abort.name} has its own UI text, not the generic fallback`, () => {
       expect(refusalMessage(abort)).not.toBe(abort.meaning)
     })
@@ -107,7 +119,7 @@ describe('explainApproveRefusal: other outcomes', () => {
     const call = simulateTransaction.mock.calls[0]?.[0] as { transaction: Transaction }
     expect(call.transaction).toBe(tx)
     expect(tx.getData().sender).toBe(SENDER)
-    // the fake exposes nothing but simulateTransaction: signing or executing would throw
+    // the fake exposes nothing but simulateTransaction: signing or executing would throw (no funds, no signature)
     expect(Object.keys(client.core)).toEqual(['simulateTransaction'])
   })
 
@@ -118,7 +130,7 @@ describe('explainApproveRefusal: other outcomes', () => {
     expect(r.reason).toBeUndefined()
     expect(r.advice).toBeUndefined()
     expect(r.message).toMatch(/abort 4 in nft_gate/)
-    // without policyPackageIds the module name alone is trusted
+    // without policyPackageIds the module name alone is trusted (which is why the controller always passes them)
     const unfiltered = await explainApproveRefusal(fakeClient(() => abortResult('nft_gate', 4, OTHER_PKG)).client, approveTx(), { sender: SENDER })
     expect(unfiltered.reason).toBe('E_GATE_PAUSED')
   })
@@ -130,6 +142,7 @@ describe('explainApproveRefusal: other outcomes', () => {
   })
 
   it('a code beyond the safe integer range is refused with the code left out', async () => {
+    // A u64 above 2^53: exposing it as a JavaScript number would be inexact, so the code is left out.
     const big = abortResult('access_gate', 0)
     big.FailedTransaction.status.error.MoveAbort.abortCode = '9223372036854775808'
     big.FailedTransaction.status.error.message = 'x'
@@ -157,6 +170,7 @@ describe('explainApproveRefusal: other outcomes', () => {
     expect(r.message).toContain('fetch failed')
   })
 
+  // A rejected promise can carry a string; it must still be reported, not thrown.
   it('a non-Error rejection is unknown too', async () => {
     const r = await explain(fakeClient(() => Promise.reject('boom')).client)
     expect(r).toMatchObject({ kind: 'unknown', cause: 'boom' })
@@ -173,11 +187,13 @@ describe('explainApproveRefusal: other outcomes', () => {
     expect(r.raw).toMatchObject({ message: 'InsufficientGas' })
   })
 
+  // A failed status that carries no error object has nothing to classify.
   it('a failure with no error at all is unknown', async () => {
     const r = await explain(fakeClient(() => ({ $kind: 'FailedTransaction', FailedTransaction: { status: { success: false } } })).client)
     expect(r.kind).toBe('unknown')
   })
 
+  // Shapes a client could return that are not a result at all; none may throw.
   const malformed: [string, unknown][] = [
     ['undefined', undefined],
     ['null', null],
@@ -199,6 +215,7 @@ describe('explainApproveRefusal: other outcomes', () => {
 })
 
 describe('SealController.explainRefusal', () => {
+  // Three providers: a well-behaved one, one that builds a non-approve call, one that throws while building.
   const provider: SealPolicyProvider = {
     type: 'noop',
     buildId: () => new Uint8Array([0]),
@@ -223,6 +240,7 @@ describe('SealController.explainRefusal', () => {
     },
   }
 
+  /** A controller over the three providers, with the fake client as its Sui client. */
   function controller(client: RefusalClient) {
     const registry = new PolicyRegistry().register(provider).register(badProvider).register(throwingProvider)
     return new SealController(
@@ -252,6 +270,7 @@ describe('SealController.explainRefusal', () => {
     expect(r.reason).toBeUndefined()
   })
 
+  // The controller path: success means the policy approves, so the refusal came from the key servers.
   it('allowed', async () => {
     expect((await controller(fakeClient(() => okResult).client).explainRefusal('noop', {}, '00', { address: SENDER })).kind).toBe('allowed')
   })
@@ -278,6 +297,7 @@ describe('SealController.explainRefusal', () => {
     expect(simulateTransaction).not.toHaveBeenCalled()
   })
 
+  // The one case that throws: asking about a policy type nobody registered is a programming error.
   it('an unregistered policy type throws, as decrypt does', async () => {
     await expect(controller(fakeClient(() => okResult).client).explainRefusal('nope', {}, '00', { address: SENDER })).rejects.toThrow()
   })

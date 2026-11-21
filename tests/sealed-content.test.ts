@@ -1,3 +1,8 @@
+/**
+ * Tests for sealed-content pointers (`src/sealed-content.ts`): the publish builders enforce the Move byte limits (UTF-8 bytes, not characters), a pointer event is
+ * decoded only for this package, listing pages the full node and keeps one gate, the indexer path falls back safely (a plain-http or stale indexer is treated as
+ * unavailable), the publisher filter drops strangers, and bad rows are skipped and counted. The node and the indexer are doubles.
+ */
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { bcs } from '@mysten/sui/bcs'
 import { Transaction } from '@mysten/sui/transactions'
@@ -15,10 +20,14 @@ import {
   type SealEventsClient,
 } from '../src/sealed-content.js'
 
+// The sealed-storage package, its PolicyConfig, a gate and valid pointer fields: distinct placeholder ids and values.
 const PKG = '0x' + '42'.repeat(32)
 const POLICY = '0x' + 'ee'.repeat(32)
+/** The call target of the publish builders. */
 const TARGET = { publishedAt: PKG, policyConfigId: POLICY }
+/** The gate the pointers belong to. */
 const GATE = '0x' + 'ab'.repeat(32)
+/** Valid pointer fields; the cases below change one of them. */
 const base = { gateId: GATE, blobId: 'b'.repeat(43), sealId: '0x' + 'cd'.repeat(48), label: 'Episode 1' }
 
 describe('buildPublishSealedContentTx limits (mirror the Move constants)', () => {
@@ -34,7 +43,7 @@ describe('buildPublishSealedContentTx limits (mirror the Move constants)', () =>
   })
 
   it('counts UTF-8 bytes, not characters', () => {
-    // 129 × "é" (2 bytes each) = 258 bytes > 256.
+    // The Move function limits BYTES: 129 × "é" (2 bytes each) = 258 bytes > 256, though only 129 characters.
     expect(() => buildPublishSealedContentTx(new Transaction(), TARGET, { ...base, label: 'é'.repeat(129) })).toThrow(
       /label is 258 bytes/,
     )
@@ -67,8 +76,11 @@ const Published = bcs.struct('SealedContentPublished', {
   label: bcs.string(),
   publisher: bcs.Address,
 })
+/** A gate other than ours, so a filter can be seen to drop its pointers. */
 const OTHER_GATE = '0x' + 'ef'.repeat(32)
+/** A counter that gives each fake event a distinct transaction digest. */
 let seq = 0
+/** A `SealedContentPublished` event row for `gateId` (default package: ours), with a fixed publisher. */
 function event(gateId: string, label = 'Episode', pkg = PKG): CoreEventEntry {
   return {
     eventType: `${pkg}::sealed_content::SealedContentPublished`,
@@ -87,6 +99,7 @@ function event(gateId: string, label = 'Episode', pkg = PKG): CoreEventEntry {
   }
 }
 
+/** A node double serving `pages` newest first (the page index is the cursor). */
 function eventsClient(pages: CoreEventEntry[][]) {
   const listEvents = vi.fn(async ({ before }: { before?: string | null }) => {
     const i = before ? Number(before) : 0
@@ -118,6 +131,7 @@ describe('parseSealedContentEvent', () => {
 })
 
 describe('publisher filter (Seal gives confidentiality, not authenticity)', () => {
+  // The operator is the publisher `event()` uses; a rogue pointer is the same event from another address.
   const OPERATOR = '0x' + '0d'.repeat(32)
   const rogue = (label: string): CoreEventEntry => {
     const e = event(GATE, label)
@@ -125,6 +139,7 @@ describe('publisher filter (Seal gives confidentiality, not authenticity)', () =
   }
 
   it('lists only pointers published by the given addresses, on the full node and the indexer', async () => {
+    // A stranger's pointer with a convincing label next to the real one: the filter must keep only the operator's, on both sources.
     const rows = [rogue('Official update'), event(GATE, 'real')]
     const rpc = await listSealedContent(eventsClient([rows]), { originalId: PKG, gateId: GATE, publishers: [OPERATOR] })
     expect(rpc.pointers.map((p) => p.label)).toEqual(['real'])
@@ -141,6 +156,7 @@ describe('publisher filter (Seal gives confidentiality, not authenticity)', () =
   it('compares publishers normalised, and lists everything when no filter is given', async () => {
     const rows = [rogue('a'), event(GATE, 'b')]
     expect((await listSealedContent(eventsClient([rows]), { originalId: PKG, gateId: GATE })).pointers).toHaveLength(2)
+    // No filter lists everything; an upper-case spelling still matches; an empty list matches nobody.
     const short = '0x' + '0d'.repeat(32)
     expect((await listSealedContent(eventsClient([rows]), { originalId: PKG, gateId: GATE, publishers: [short.toUpperCase().replace('0X', '0x')] })).pointers).toHaveLength(1)
     expect((await listSealedContent(eventsClient([rows]), { originalId: PKG, gateId: GATE, publishers: [] })).pointers).toHaveLength(0)
@@ -149,6 +165,7 @@ describe('publisher filter (Seal gives confidentiality, not authenticity)', () =
 
 describe('listSealedContent', () => {
   it('pages the full node, keeps only the gate, and returns a cursor', async () => {
+    // The first page has no match, the second has: the scan continues until the limit, then offers the rest through the cursor.
     const client = eventsClient([[event(OTHER_GATE)], [event(GATE, 'a')], [event(GATE, 'b')]])
     const page = await listSealedContent(client, { originalId: PKG, gateId: GATE, limit: 1 })
     expect(page.pointers.map((p) => p.label)).toEqual(['a'])
@@ -176,6 +193,7 @@ describe('listSealedContent', () => {
     expect(indexed.pointers.map((p) => p.label)).toEqual(['idx'])
     expect(new URL(String((ok.mock.calls[0] as unknown[])[0])).pathname).toBe('/v1/testnet/sealed-content')
 
+    // An indexer that answers 502: the first page falls back to the full node and says why.
     const down = vi.fn(async () => new Response('', { status: 502 }))
     const fallback = await listSealedContent(eventsClient([[event(GATE, 'rpc')]]), {
       originalId: PKG,
@@ -187,6 +205,7 @@ describe('listSealedContent', () => {
   })
 
   it('never reads a plain-http indexer (shared reader); the first page comes from the full node', async () => {
+    // The shared reader refuses http (except loopback) before any request is made, so the fetch double must never be called.
     const fetchFn = vi.fn()
     const page = await listSealedContent(eventsClient([[event(GATE, 'rpc')]]), {
       originalId: PKG,
@@ -200,6 +219,7 @@ describe('listSealedContent', () => {
 
 describe('discovery robustness', () => {
   it('skips and counts a row that does not decode instead of failing the page', async () => {
+    // Three bytes cannot hold the event; it is counted in `skipped`, and the good row after it still arrives.
     const broken: CoreEventEntry = { ...event(GATE, 'x'), bcs: new Uint8Array([1, 2, 3]) }
     const page = await listSealedContent(eventsClient([[broken, event(GATE, 'ok')]]), { originalId: PKG, gateId: GATE })
     expect(page.pointers.map((p) => p.label)).toEqual(['ok'])
@@ -220,6 +240,7 @@ describe('discovery robustness', () => {
   })
 
   it('caps the full-node scan at 20 pages whatever maxPages says', async () => {
+    // Forty pages of other gates' events, and a request for a thousand pages: the cap of 20 is what bounds the scan.
     const pages = Array.from({ length: 40 }, () => [event(OTHER_GATE)])
     const client = eventsClient(pages)
     await listSealedContent(client, { originalId: PKG, gateId: GATE, maxPages: 1000 })
@@ -228,7 +249,9 @@ describe('discovery robustness', () => {
 })
 
 describe('a stale head page counts as unavailable (sui-indexer F19, inherited from access-gate-client)', () => {
+  // A fixed "now", so ages are exact (the clock is faked below).
   const NOW = 1_800_000_000_000
+  // An indexer double that serves one good pointer plus the given page fields (`polledAt` and the like).
   const serving = (body: Record<string, unknown>) =>
     vi.fn(async () =>
       Response.json({
@@ -237,6 +260,7 @@ describe('a stale head page counts as unavailable (sui-indexer F19, inherited fr
         ...body,
       }),
     )
+  // List through the double, returning the node double too so a test can check whether it was used.
   const read = (fetchFn: ReturnType<typeof vi.fn>, extra: Partial<ListSealedContentOptions> = {}) => {
     const client = eventsClient([[event(GATE, 'rpc')]])
     const page = listSealedContent(client, {
@@ -248,6 +272,7 @@ describe('a stale head page counts as unavailable (sui-indexer F19, inherited fr
     return { client, page }
   }
 
+  // Only `Date` is faked: real timers keep the promises working.
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
@@ -263,6 +288,7 @@ describe('a stale head page counts as unavailable (sui-indexer F19, inherited fr
   })
 
   it('falls back to the full node when the head page is stale (spy proves the RPC fallback ran)', async () => {
+    // The boundary is inclusive: exactly the limit is fresh, one millisecond more is stale.
     expect(STALE_AFTER_MS).toBe(60_000)
     expect((await read(serving({ polledAt: NOW - STALE_AFTER_MS })).page).source).toBe('indexer')
     const { client, page } = read(serving({ polledAt: NOW - STALE_AFTER_MS - 1 }))
@@ -281,6 +307,7 @@ describe('a stale head page counts as unavailable (sui-indexer F19, inherited fr
   })
 
   it('tolerates a polledAt in the future within the clock-skew allowance, and falls back beyond it', async () => {
+    // A client clock that runs behind must not make a healthy indexer look broken; the allowance is the one `access-gate-client` exports.
     expect((await read(serving({ polledAt: NOW + 60_000 })).page).source).toBe('indexer')
     expect((await read(serving({ polledAt: NOW + CLOCK_SKEW_TOLERANCE_MS })).page).source).toBe('indexer')
     const { client, page } = read(serving({ polledAt: NOW + CLOCK_SKEW_TOLERANCE_MS + 1 }))

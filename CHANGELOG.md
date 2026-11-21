@@ -1,7 +1,16 @@
 # Changelog
 
-All notable changes to `@meddleware/seal-client` are documented here.
+All notable changes to `@meddleware/sealed-storage-client` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Changed
+
+- Documentation: every file is annotated line by line and has a header; added `CONTRIBUTING.md` and `AGENTS.md`; README Development section; CLAUDE.md Commands, Gotchas and Related;
+  this changelog's title names the package by its current name.
+- The generated `src/deployments.ts` gains explanatory comments (written in `scripts/gen-deployments.mjs`); its ids are unchanged.
+- The live suite skips its event test when a public full node has pruned the package's events, instead of failing (it had failed weekly since 2026-11-02). No change to the shipped code.
 
 ## [0.0.27] - 2026-11-13
 

@@ -5,13 +5,19 @@
 // paused" or "this package version was retired" must read the module (and, when it can, the package) as well.
 // The table below mirrors the constants in `sealed-storage-sui/sources/*.move` (a test reads them when that
 // checkout is next to this one).
+//
+// Role: turn a failed transaction's error (an SDK object, a status, or text from a wallet or node) into a named abort, but only when it came from a
+// `sealed_storage` module of the right package, so a look-alike module's code 1 is never explained as ours. Main exports: `POLICY_ABORTS`, `classifyPolicyAbort`,
+// `parseMoveAbort`, `describePolicyAbort`. Tested in `tests/aborts.test.ts`.
 
 /** A `sealed_storage` module that can abort. */
 export type PolicyModule = 'config' | 'nft_gate' | 'timelock' | 'sealed_content'
 
 /** One abort code of a `sealed_storage` module. */
 export interface PolicyAbort {
+  /** The module the code belongs to (codes overlap between modules). */
   module: PolicyModule
+  /** The abort code. */
   code: number
   /** The Move constant's name. */
   name: string
@@ -105,22 +111,27 @@ export const POLICY_ABORTS: readonly PolicyAbort[] = [
 /** The abort of `module` with `code`, or undefined when `sealed_storage` defines none. */
 export function describePolicyAbort(module: string, code: number | bigint | string): PolicyAbort | undefined {
   let wanted: bigint
+  // `BigInt` throws on a string such as `abc` or a fraction; that means "no such code", not an error.
   try {
     wanted = BigInt(code)
   } catch {
     return undefined
   }
+  // Looked up by module AND code: the small codes overlap between modules.
   return POLICY_ABORTS.find((a) => a.module === module && BigInt(a.code) === wanted)
 }
 
 /** A Move abort read out of an error, a message or a structured execution status. */
 export interface ParsedMoveAbort {
+  /** The abort code, a bigint because Move codes are u64. */
   code: bigint
+  /** The module the abort happened in, when the error names it. */
   module?: string
   /** The package the abort happened in, as written in the source (not normalised). */
   package?: string
 }
 
+/** A hex address, used to tell a package id from other text before a name is trusted. */
 const HEX_ADDRESS = /(0x[0-9a-fA-F]+)/
 
 /**
@@ -135,11 +146,14 @@ export function parseMoveAbort(input: unknown): ParsedMoveAbort | undefined {
   return parse(input, 0)
 }
 
+/** The recursive reader behind `parseMoveAbort`; `depth` bounds the walk so a cyclic error chain cannot loop. */
 function parse(input: unknown, depth: number): ParsedMoveAbort | undefined {
+  // A cyclic or absurdly nested chain, or nothing to read.
   if (depth > 5 || input === null || input === undefined) return undefined
   if (typeof input === 'string') return parseText(input)
   if (typeof input !== 'object') return undefined
   const o = input as Record<string, unknown>
+  // The structured shape: `{ abortCode, location }`.
   if ('abortCode' in o) {
     const code = toBigInt(o.abortCode)
     if (code === undefined) return undefined
@@ -154,14 +168,17 @@ function parse(input: unknown, depth: number): ParsedMoveAbort | undefined {
     const inner = parse(o.MoveAbort, depth + 1)
     if (inner) return inner
   }
+  // An Error: read its message as text.
   if (typeof o.message === 'string') {
     const fromMessage = parseText(o.message)
     if (fromMessage) return fromMessage
   }
+  // Finally, the error's cause.
   if ('cause' in o) return parse(o.cause, depth + 1)
   return undefined
 }
 
+/** A non-negative integer as a bigint (from a bigint, a safe number or a decimal string); otherwise `undefined`. */
 function toBigInt(v: unknown): bigint | undefined {
   if (typeof v === 'bigint') return v
   if (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) return BigInt(v)
@@ -169,6 +186,7 @@ function toBigInt(v: unknown): bigint | undefined {
   return undefined
 }
 
+/** Read an abort out of an error message, in either of the two wordings clients use. */
 function parseText(text: string): ParsedMoveAbort | undefined {
   // `abort code: 4, in '0xPKG::nft_gate::seal_approve'`
   const modern = /abort code:\s*(\d+)(?:[^'\n]*?in '([^':]+)::([A-Za-z_][A-Za-z0-9_]*)(?:::[A-Za-z0-9_]+)?')?/.exec(text)
@@ -189,6 +207,7 @@ function parseText(text: string): ParsedMoveAbort | undefined {
   return undefined
 }
 
+/** True if two addresses are the same number, whatever their prefix, case or zero padding. */
 function sameAddress(a: string, b: string): boolean {
   const norm = (s: string) => s.toLowerCase().replace(/^0x/, '').replace(/^0+/, '')
   return norm(a) === norm(b)
@@ -212,11 +231,14 @@ export function classifyPolicyAbort(
   options: { policyPackageIds?: readonly string[] } = {},
 ): PolicyAbort | undefined {
   const abort = parseMoveAbort(input)
+  // An abort with no module cannot be told apart from another module's code of the same value.
   if (!abort?.module) return undefined
   const ids = options.policyPackageIds
+  // With package ids given, the abort must report one of them; an abort with no package is not claimed (fail closed).
   if (ids !== undefined) {
     const pkg = abort.package
     if (pkg === undefined || !ids.some((id) => sameAddress(id, pkg))) return undefined
   }
+  // Finally the table lookup by module and code.
   return describePolicyAbort(abort.module, abort.code)
 }

@@ -1,3 +1,7 @@
+/**
+ * Conformance of the identity byte layouts with the Move modules: the same vectors (`conformance-vectors.json`) are asserted here and in the Move tests of
+ * `sealed-storage-sui`, so if either side changes a byte, one of the two suites fails. A mismatch would make data undecryptable by anyone.
+ */
 import { describe, it, expect } from 'vitest'
 import { objectIdBytes, u64beBytes, bytesToHex } from '../src/bytes.js'
 import vectors from './conformance-vectors.json' with { type: 'json' }

@@ -98,17 +98,23 @@ describe.skipIf(!ENABLED)('sealed-storage-client live nft-gate round trip with n
   const plaintext = new TextEncoder().encode('sealed-storage-client live nft-gate round trip')
   let keypair: Ed25519Keypair
   let address: string
+  /** A wallet-style signer for a keypair, as the controller's `signPersonalMessage` hook. */
   const sign = (kp: Ed25519Keypair) => (m: Uint8Array) => kp.signPersonalMessage(m)
 
+  /** A scratch gate the test created: its admin context plus whether it mints soulbound passes. */
   interface Gate extends GateAdminContext {
+    /** Whether the gate's passes are soulbound. */
     soulbound: boolean
   }
+  /** The three scratch gates (the main one, another one, and one whose passes are transferable), created in `beforeAll`. */
   const gates: Record<'main' | 'other' | 'transferable', Gate> = {} as never
+  // The two passes of the main gate and the two ciphertexts are shared by the cases below; `beforeAll` creates them.
   let passA = '' // main gate, exhausted (consumed once)
   let passB = '' // main gate, one use left
   let sealed: { id: string; ciphertext: Uint8Array } // content of the main gate
   let sealedOther: { id: string; ciphertext: Uint8Array } // content of the other gate
 
+  /** Sign and execute `tx` with the live key, after checking the balance floor; fails the test on an on-chain failure. */
   async function run(tx: Transaction) {
     tx.setSenderIfNotSet(address)
     const bal = BigInt((await client.core.getBalance({ owner: address })).balance.balance)
@@ -119,6 +125,7 @@ describe.skipIf(!ENABLED)('sealed-storage-client live nft-gate round trip with n
     await client.core.waitForTransaction({ digest: body.digest, timeout: 60_000 })
     return body
   }
+  /** The first access_gate event of `kind` in a transaction's events, decoded with the client's own parser; fails if there is none. */
   function eventOf<K extends string>(body: Awaited<ReturnType<typeof run>>, kind: K) {
     for (const [i, e] of (body.events ?? []).entries()) {
       const p = parseAccessGateEvent(
@@ -129,6 +136,7 @@ describe.skipIf(!ENABLED)('sealed-storage-client live nft-gate round trip with n
     }
     throw new Error(`no ${kind} event in ${body.digest}`)
   }
+  /** Create a scratch gate (price `PRICE`, one use per pass), optionally with a policy, and return its admin context. */
   async function createGate(label: string, soulbound: boolean, policy?: Parameters<typeof buildCreateGateTx>[2]['policy']): Promise<Gate> {
     const body = await run(
       buildCreateGateTx(GATE.publishedAt, GATE.platformConfigId, {
@@ -146,6 +154,7 @@ describe.skipIf(!ENABLED)('sealed-storage-client live nft-gate round trip with n
     const created = eventOf(body, 'GateCreated')
     return { packageId: GATE.publishedAt, gateId: created.gateId, adminCapId: created.adminCapId, platformConfigId: GATE.platformConfigId, soulbound }
   }
+  /** The purchase/consume configuration of a gate. */
   const nftConfig = (g: Gate) => ({
     packageId: GATE.publishedAt,
     gateId: g.gateId,
@@ -153,9 +162,11 @@ describe.skipIf(!ENABLED)('sealed-storage-client live nft-gate round trip with n
     nftType: accessNftType(GATE.originalId, g.soulbound),
     soulbound: g.soulbound,
   })
+  /** Buy a pass of a gate with the live key and return the minted NFT's id. */
   async function buyPass(g: Gate): Promise<string> {
     return eventOf(await run(buildPurchaseTx(nftConfig(g), PRICE)), 'AccessMinted').nftId
   }
+  /** Decrypt `s` as `kp` presenting pass `nftId` of gate `g` (with an optional controller, to reuse a cached key). */
   const decryptAs = (kp: Ed25519Keypair, g: Gate, nftId: string, s: { id: string; ciphertext: Uint8Array }, ctl = controller()) =>
     ctl.decrypt('nft-gate', { gateId: g.gateId, nftId, soulbound: g.soulbound }, s.id, s.ciphertext, {
       address: kp.toSuiAddress(),

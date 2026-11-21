@@ -1,3 +1,9 @@
+/**
+ * @file The check that a gate is one the sealed-storage policies can actually be unlocked by.
+ *
+ * Role: a Seal policy is tied to the `access_gate` package it was published against. Sealing to an object of any other type succeeds but can never be
+ * decrypted, so the check runs before the person encrypts. Main export: `assertLinkedGate`. Tested in `tests/refusal.test.ts` and the live suite.
+ */
 import { normalizeStructTag, normalizeSuiAddress } from '@mysten/sui/utils'
 import type { SealSuggestClient } from './types.js'
 
@@ -20,15 +26,18 @@ export async function assertLinkedGate(
   accessGateOriginalId: string,
   options: { requireSoulbound?: boolean } = {},
 ): Promise<void> {
+  // Fields are fetched only when the soulbound flag has to be read.
   const { object } = await client.core.getObject({
     objectId: normalizeSuiAddress(gateId),
     ...(options.requireSoulbound ? { include: { json: true } } : {}),
   })
+  // The expected full type, and the object's own type, both normalised so address spellings compare equal.
   const want = normalizeStructTag(`${normalizeSuiAddress(accessGateOriginalId)}::access_gate::Gate`)
   const have = object.type ? normalizeStructTag(object.type) : undefined
   if (have !== want) {
     throw new Error(`sealed-storage-client: ${gateId} is not a Gate of the linked access_gate package; content sealed to it could never be decrypted.`)
   }
+  // `soulbound` must be exactly `true`: a missing or mistyped field is not proof, and the check fails closed.
   if (options.requireSoulbound && object.json?.soulbound !== true) {
     throw new Error(
       `sealed-storage-client: gate ${gateId} mints transferable passes; a holder can freeze one into public access. ` +

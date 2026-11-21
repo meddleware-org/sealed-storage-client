@@ -1,3 +1,13 @@
+/**
+ * @file `SealController`: threshold encrypt and decrypt over a registry of policy providers, with a cached per-address SessionKey.
+ *
+ * Role: the one place that talks to the Seal key servers. It owns no policy logic (each provider builds its own identity and approve call), but it owns the
+ * checks that keep a person from losing data or leaking keys: the committee and threshold are validated, a gate is checked before sealing to it, and before
+ * any key is requested a ciphertext must name the identity and policy package the caller expects and the approve transaction must hold only `seal_approve*`
+ * calls. Main exports: `SealController`, `describeCiphertext`, `sealedUnderServers`, `assertApproveOnly`. Tested in `tests/controller.test.ts` and
+ * `tests/refusal.test.ts`; the real key servers are exercised by the live suite (`tests/integration/`).
+ */
+// The SDK's client, session key and ciphertext parser.
 import { EncryptedObject, SealClient, SessionKey } from '@mysten/seal'
 import type { SealCompatibleClient } from '@mysten/seal'
 import { Transaction } from '@mysten/sui/transactions'
@@ -22,6 +32,7 @@ export interface KeyServerConfig {
   apiKey?: string
 }
 
+/** Everything a `SealController` needs: the chain objects, the committee and its threshold, and the safety switches. */
 export interface SealControllerConfig {
   /** A Sui client exposing the core API (e.g. `SuiGrpcClient` from `@mysten/sui/grpc`). */
   suiClient: SealCompatibleClient
@@ -72,6 +83,7 @@ export interface SealControllerConfig {
 /** Wallet hook: sign a personal message, returning the signature (base64). */
 export type SignPersonalMessage = (message: Uint8Array) => Promise<{ signature: string }>
 
+/** What `encrypt` returns. */
 export interface EncryptResult {
   /** Seal identity (hex, no `0x`) — persist this in the manifest; required verbatim to decrypt. */
   id: string
@@ -85,20 +97,25 @@ export interface EncryptResult {
  * in the registered providers, so new policy types need no controller changes.
  */
 export class SealController {
+  /** The SDK client, configured once from the committee. */
   private readonly client: SealClient
+  /** Cached session keys by address and policy package, each with the time after which it must not be reused. */
   private readonly sessions = new Map<string, { key: SessionKey; expiresAt: number }>()
+  /** Session keys being minted right now, so concurrent decrypts share one wallet prompt. */
   private readonly minting = new Map<string, Promise<SessionKey>>()
 
   constructor(
     private readonly cfg: SealControllerConfig,
     private readonly registry: PolicyRegistry,
   ) {
+    // A session shorter than two minutes would be treated as expired by the one-minute early-expiry margin the moment it is minted.
     const ttl = cfg.sessionTtlMin ?? 10
     if (ttl < 2) {
       throw new Error(
         `sessionTtlMin must be ≥ 2 (got ${ttl}); a shorter TTL leaves no window before the early-expiry guard fires`,
       )
     }
+    // The committee in the SDK's shape: a missing weight is 1, and an API key (publishable, it ships to browsers) gets its header name.
     this.client = new SealClient({
       suiClient: cfg.suiClient,
       serverConfigs: cfg.serverConfigs.map((s) => ({
@@ -109,6 +126,7 @@ export class SealController {
       })),
       verifyKeyServers: cfg.verifyKeyServers ?? !cfg.serverConfigs.some((s) => s.aggregatorUrl),
     }) // see `verifiesKeyServers`
+    // The threshold must be reachable: at least 1 and at most the total weight, or no set of servers could ever release a key (the data would be unrecoverable).
     const totalWeight = cfg.serverConfigs.reduce((n, s) => n + (s.weight ?? 1), 0)
     if (!Number.isInteger(cfg.threshold) || cfg.threshold < 1 || cfg.threshold > totalWeight) {
       throw new Error(
@@ -128,14 +146,17 @@ export class SealController {
 
   /** Encrypt `data` under policy `type` with `params`. Returns the identity (hex) + ciphertext. */
   async encrypt<P>(type: string, params: P, data: Uint8Array): Promise<EncryptResult> {
+    // The provider owns the identity layout; the controller only hex-encodes it for the manifest.
     const provider = this.registry.get<P>(type)
     const id = bytesToHex(provider.buildId(params))
     const gateId = (params as { gateId?: unknown } | null)?.gateId
+    // For the nft-gate policy, check the gate before sealing: sealing to anything else succeeds but can never be unlocked.
     if (type === 'nft-gate' && this.cfg.accessGateOriginalId && typeof gateId === 'string') {
       await assertLinkedGate(this.cfg.suiClient as unknown as SealSuggestClient, gateId, this.cfg.accessGateOriginalId, {
         requireSoulbound: !this.cfg.allowTransferableGates,
       })
     }
+    // Threshold encryption to the whole committee, under the policy package's original id (the Seal namespace).
     const { encryptedObject } = await this.client.encrypt({
       threshold: this.cfg.threshold,
       packageId: this.cfg.originalId,
@@ -162,6 +183,7 @@ export class SealController {
     ciphertext: Uint8Array,
     opts: { address: string; signPersonalMessage: SignPersonalMessage },
   ): Promise<Uint8Array> {
+    // Everything below is checked BEFORE any key is requested, so a wrong input never costs a wallet prompt or a key-server request.
     const provider = this.registry.get<P>(type)
     if (id.length % 2 !== 0) throw new Error(`malformed Seal id (odd hex length): ${id}`)
     const idBytes = hexToBytes(id)
@@ -174,20 +196,25 @@ export class SealController {
     if (sealed.id.toLowerCase().replace(/^0x/, '') !== id.toLowerCase()) {
       throw new Error('sealed-storage-client: ciphertext identity does not match the expected Seal id')
     }
+    // Sealed under another package: the key servers would evaluate another package's policy.
     if (normalizeHexId(sealed.packageId) !== normalizeHexId(this.cfg.originalId)) {
       throw new Error('sealed-storage-client: ciphertext was sealed under a different policy package')
     }
+    // The session key (one wallet signature per address, cached), then the approve transaction the key servers dry-run.
     const sessionKey = await this.session(opts.address, opts.signPersonalMessage)
 
     const tx = new Transaction()
     provider.buildApprove(tx, { publishedAt: this.cfg.publishedAt, policyConfigId: this.cfg.policyConfigId }, idBytes, params)
+    // A provider must not smuggle other commands into the transaction the servers evaluate.
     assertApproveOnly(tx, this.cfg.publishedAt)
+    // `onlyTransactionKind`: the servers need the commands, not a gas payment or a sender.
     const txBytes = await tx.build({ client: this.cfg.suiClient, onlyTransactionKind: true })
 
     return this.client.decrypt({
       data: ciphertext,
       sessionKey,
       txBytes,
+      // On by default: key shares from different servers are verified before they are combined.
       checkShareConsistency: this.cfg.checkShareConsistency ?? true,
     })
   }
@@ -214,6 +241,7 @@ export class SealController {
   ): Promise<RefusalExplanation> {
     const provider = this.registry.get<P>(type)
     let tx: Transaction
+    // Building can fail (a bad id, a provider error); that is reported as `unknown`, not thrown, because this method explains failures.
     try {
       const idBytes = hexToBytes(id)
       tx = new Transaction()
@@ -236,15 +264,18 @@ export class SealController {
    * address, clears just that one.
    */
   clearSession(address?: string): void {
+    // No argument: every address (a full disconnect). With one: just that address.
     if (address === undefined) this.sessions.clear()
     else this.sessions.delete(this.sessionKeyId(address))
   }
 
   /** Sessions are scoped to the address AND the policy package they authorise. */
   private sessionKeyId(address: string): string {
+    // Lower-case, so the same address in two spellings shares one session; the package is part of the key because a session authorises one package.
     return `${address.toLowerCase()}:${normalizeHexId(this.cfg.originalId)}`
   }
 
+  /** The cached session key for `address`, or a freshly minted one (one mint in flight per address). */
   private async session(address: string, sign: SignPersonalMessage): Promise<SessionKey> {
     const cached = this.sessions.get(this.sessionKeyId(address))
     if (cached && cached.expiresAt > Date.now()) return cached.key
@@ -253,11 +284,13 @@ export class SealController {
     const id = this.sessionKeyId(address)
     const pending = this.minting.get(id)
     if (pending) return pending
+    // Forget the in-flight mint when it settles, whether it worked or not, so a failure can be retried.
     const minted = this.mint(address, sign, id).finally(() => this.minting.delete(id))
     this.minting.set(id, minted)
     return minted
   }
 
+  /** Create a session key, have the wallet sign its message, and cache it under `id`. */
   private async mint(address: string, sign: SignPersonalMessage, id: string): Promise<SessionKey> {
     const ttlMin = this.cfg.sessionTtlMin ?? 10
     // The key's lifetime starts when it is created and is bound into the message the wallet signs,
@@ -270,6 +303,7 @@ export class SealController {
       suiClient: this.cfg.suiClient,
     })
     const { signature } = await sign(key.getPersonalMessage())
+    // The signature is checked by the SDK when it is set.
     await key.setPersonalMessageSignature(signature)
     // Expire a minute early so we never hand a just-expired key to a key server.
     this.sessions.set(id, { key, expiresAt: createdAt + (ttlMin - 1) * 60_000 })
@@ -286,7 +320,9 @@ export class SealController {
 export function assertApproveOnly(tx: Transaction, publishedAt: string): void {
   const pkg = normalizeHexId(publishedAt)
   const commands = tx.getData().commands
+  // An empty transaction approves nothing; a provider that built none has a bug.
   if (commands.length === 0) throw new Error('sealed-storage-client: the approve PTB is empty')
+  // Every command must be a Move call, to the policy package, to a function named `seal_approve…`.
   for (const c of commands) {
     const call = c.$kind === 'MoveCall' ? c.MoveCall : null
     if (!call || normalizeHexId(call.package) !== pkg || !call.function.startsWith('seal_approve')) {
@@ -297,6 +333,7 @@ export function assertApproveOnly(tx: Transaction, publishedAt: string): void {
 
 /** Lower-case, `0x`-prefixed, zero-padded 32-byte hex id for comparisons. */
 function normalizeHexId(v: string): string {
+  // Strip the prefix and pad to 64 digits, so `0x2` and its full form compare equal.
   const hex = v.toLowerCase().replace(/^0x/, '')
   return `0x${hex.padStart(64, '0')}`
 }
@@ -307,6 +344,7 @@ export interface CiphertextInfo {
   id: string
   /** The policy package's original id (normalised). */
   packageId: string
+  /** How much weight must cooperate to open it. */
   threshold: number
   /** Key servers it was sealed to, with their weights (normalised object ids, in header order). */
   servers: { objectId: string; weight: number }[]
@@ -322,6 +360,7 @@ export interface CiphertextInfo {
 export function describeCiphertext(ciphertext: Uint8Array): CiphertextInfo {
   const parsed = EncryptedObject.parse(ciphertext)
   const servers: { objectId: string; weight: number }[] = []
+  // The header lists one entry per share; a server that holds several shares appears several times, which is its weight.
   for (const [objectId] of parsed.services) {
     const id = normalizeHexId(objectId)
     const existing = servers.find((s) => s.objectId === id)
@@ -342,6 +381,7 @@ export function sealedUnderServers(
   servers: readonly Pick<KeyServerConfig, 'objectId' | 'weight'>[],
   threshold: number,
 ): boolean {
+  // The same threshold and the same number of distinct servers, then every configured server present with the same weight.
   if (info.threshold !== threshold || info.servers.length !== servers.length) return false
   return servers.every((s) =>
     info.servers.some((h) => h.objectId === normalizeHexId(s.objectId) && h.weight === (s.weight ?? 1)),

@@ -1,3 +1,9 @@
+/**
+ * @file Which addresses to trust as authors of a gate's sealed content.
+ *
+ * Role: Seal gives confidentiality, not authenticity, so a UI that lists a gate's sealed items should list only those published by the operator (or by addresses
+ * the operator vouches for). Main export: `gateOperators`. Tested in `tests/operators.test.ts`.
+ */
 import { fetchGate } from '@meddleware/access-gate-client'
 import type { SuiObjectClient } from '@meddleware/access-gate-client'
 import { normalizeSuiAddress } from '@mysten/sui/utils'
@@ -20,7 +26,9 @@ export async function gateOperators(
   accessGateOriginalId: string,
   extra: string[] = [],
 ): Promise<string[]> {
+  // Read the gate from the chain (the payment recipient is the operator's own income address).
   const gate = await fetchGate(client, gateId, accessGateOriginalId)
   if (!gate) throw new Error(`sealed-storage-client: ${gateId} is not a Gate of ${accessGateOriginalId}`)
+  // Normalised and de-duplicated, so the same address in two spellings counts once.
   return [...new Set([gate.paymentRecipient, ...extra].map((a) => normalizeSuiAddress(a)))]
 }

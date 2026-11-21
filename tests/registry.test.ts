@@ -1,3 +1,7 @@
+/**
+ * Tests for the policy registry (`src/registry.ts`) and the default registry: registration, lookup with a helpful error, peers with no priority, and the refusal
+ * to replace a registered type silently.
+ */
 import { describe, it, expect } from 'vitest'
 import { PolicyRegistry } from '../src/registry.js'
 import { createDefaultRegistry } from '../src/default-registry.js'
@@ -23,6 +27,7 @@ describe('PolicyRegistry', () => {
     expect(r.get('time-lock')).toBe(timeLockProvider)
   })
 
+  // A silent replacement would change how identities are built, and old ciphertexts would stop decrypting.
   it('refuses a second provider for a registered type unless replace is explicit', () => {
     const r = new PolicyRegistry().register(createNftGateProvider())
     expect(() => r.register(createNftGateProvider('0x1'))).toThrowError(/already registered/)

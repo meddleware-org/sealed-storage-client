@@ -8,12 +8,16 @@ name: Live checks
 
 on:
   schedule:
+    # Mondays at 05:47 UTC (an odd minute, so it does not queue with the fleet's other jobs on the hour).
     - cron: '47 5 * * 1'
+  # And on demand, for a check after a republish of the Move package or a key-server change.
   workflow_dispatch:
 
+# Read-only: the suite reads public testnet and needs no key or secret.
 permissions:
   contents: read
 
+# No tool may phone home from CI (the fleet's privacy rule).
 env:
   DO_NOT_TRACK: "1"
 
@@ -22,10 +26,13 @@ jobs:
     name: Testnet suite
     runs-on: ubuntu-latest
     steps:
+      # Actions are pinned by full commit SHA with the version in a comment (D12).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Node 26 is the fleet baseline (D56).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
       - run: npm ci
+      # `npm run test:integration` sets SEAL_TESTNET=1 itself; the funded round trip skips because no key file is configured.
       - name: Live suite
         run: npm run test:integration

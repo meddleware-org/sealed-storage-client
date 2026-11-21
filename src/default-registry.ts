@@ -1,3 +1,8 @@
+/**
+ * @file The registry with Meddleware's built-in policies already registered.
+ *
+ * Role: the one-call setup most apps use. Main export: `createDefaultRegistry`. Tested in `tests/registry.test.ts`.
+ */
 import { PolicyRegistry } from './registry.js'
 import { createNftGateProvider } from './providers/nft-gate.js'
 import { timeLockProvider } from './providers/timelock.js'
@@ -11,6 +16,7 @@ import { timeLockProvider } from './providers/timelock.js'
  *   suggestions.
  */
 export function createDefaultRegistry(accessGateOriginalId = ''): PolicyRegistry {
+  // `register` returns the registry, so the two built-ins chain; they are peers, neither has priority.
   return new PolicyRegistry()
     .register(createNftGateProvider(accessGateOriginalId))
     .register(timeLockProvider)

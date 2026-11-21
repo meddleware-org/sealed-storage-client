@@ -1,8 +1,17 @@
+/**
+ * @file Types for sealed-storage-client: the policy-provider contract, the manifest that links an encrypt to a decrypt, and the structural subset of a Sui client
+ * the suggestions need.
+ *
+ * Role: the vocabulary every other module shares. Types only (no runtime code), apart from the import of `Transaction` for a type position.
+ * A provider mirrors one `sealed_storage` Move module 1:1; the manifest is the portable pointer to one sealed blob.
+ */
 import type { Transaction } from '@mysten/sui/transactions'
 
 /** A suggested value for a policy form field, sourced from chain state. */
 export interface FieldSuggestion {
+  /** What goes into the field (an object id, say). */
   value: string
+  /** What the person sees in the picker. */
   label: string
 }
 
@@ -11,20 +20,30 @@ export interface FieldSuggestion {
  * Compatible with `SuiGrpcClient.core` from `@mysten/sui/grpc` without importing it directly.
  */
 export interface SealSuggestClient {
+  /** The SDK's unified core API. */
   core: {
+    /** One page of the objects an address owns, optionally of one Move type, with their fields when `include.json` is set. */
     listOwnedObjects(options: {
+      /** The owner's address. */
       owner: string
+      /** Only objects of this Move type. */
       type?: string
+      /** Where the previous page ended. */
       cursor?: string | null
+      /** The page size. */
       limit?: number
+      /** Ask for the objects' fields as JSON. */
       include?: { json?: boolean }
     }): Promise<{
       objects: Array<{ objectId: string; type?: string; json?: Record<string, unknown> | null }>
       hasNextPage: boolean
       cursor: string | null
     }>
+    /** One object by id; rejects when it does not exist. */
     getObject(options: {
+      /** The object's id. */
       objectId: string
+      /** Ask for the object's fields as JSON. */
       include?: { json?: boolean }
     }): Promise<{ object: { objectId: string; type?: string; json?: Record<string, unknown> | null } }>
   }
@@ -46,14 +65,19 @@ export interface FieldSpec {
   label: string
   /** Rendering/validation hint. */
   kind: 'text' | 'objectId' | 'datetime' | 'boolean'
+  /** Whether the form refuses an empty value. */
   required: boolean
+  /** One plain sentence under the field. */
   help?: string
 }
 
 /** UI-facing description of a policy: label + which fields encrypt vs decrypt need. */
 export interface PolicyDescriptor {
+  /** The provider's stable machine id (`nft-gate`, `time-lock`). */
   type: string
+  /** The name shown in a policy picker. */
   label: string
+  /** A plain-language explanation of what the policy does. */
   help: string
   /** Fields required to ENCRYPT under this policy (feed `buildId`). */
   encryptFields: FieldSpec[]
@@ -67,7 +91,9 @@ export interface PolicyDescriptor {
  * `sealPoliciesDeployment(network)` from `@meddleware/sealed-storage-client/deployments` supplies both.
  */
 export interface SealPolicyTarget {
+  /** The call target: the package's latest published-at id. */
   publishedAt: string
+  /** The shared `PolicyConfig` object (the version gate). */
   policyConfigId: string
 }
 
