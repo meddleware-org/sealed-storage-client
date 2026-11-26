@@ -36,6 +36,8 @@ export {
 // The two built-in policies.
 export { createNftGateProvider, type NftGateParams } from './providers/nft-gate.js'
 export { timeLockProvider, type TimeLockParams } from './providers/timelock.js'
+// The error a full node that no longer keeps the history asked for produces (from access-gate-client, so one class serves both listings).
+export { EventHistoryPrunedError, isEventHistoryPruned } from '@meddleware/access-gate-client'
 // Sealed-content pointers: publish one, list a gate's, decode an event.
 export {
   buildPublishSealedContentTransaction,

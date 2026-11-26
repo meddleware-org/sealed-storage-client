@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { bcs } from '@mysten/sui/bcs'
 import { Transaction } from '@mysten/sui/transactions'
 import { toBase64 } from '@mysten/sui/utils'
-import { CLOCK_SKEW_TOLERANCE_MS, STALE_AFTER_MS } from '@meddleware/access-gate-client'
+import { CLOCK_SKEW_TOLERANCE_MS, EventHistoryPrunedError, STALE_AFTER_MS } from '@meddleware/access-gate-client'
 import type { CoreEventEntry } from '@meddleware/access-gate-client'
 import {
   buildPublishSealedContentTransaction,
@@ -164,6 +164,17 @@ describe('publisher filter (Seal gives confidentiality, not authenticity)', () =
 })
 
 describe('listSealedContent', () => {
+  // A public full node keeps only recent history; for older events it rejects instead of returning an empty page. That reaches the caller as an `EventHistoryPrunedError`.
+  it('reports a pruned history as an EventHistoryPrunedError, keeping the node\'s answer as its cause', async () => {
+    const raw = new Error('requested data below earliest available; lowest available checkpoint is 404332001')
+    const client = { core: { listEvents: vi.fn(async () => { throw raw }) } } satisfies SealEventsClient
+    const error = await listSealedContent(client, { originalId: PKG, gateId: GATE }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(EventHistoryPrunedError)
+    expect((error as Error).cause).toBe(raw)
+    const other = new Error('connection reset')
+    await expect(listSealedContent({ core: { listEvents: vi.fn(async () => { throw other }) } }, { originalId: PKG, gateId: GATE })).rejects.toBe(other)
+  })
+
   it('pages the full node, keeps only the gate, and returns a cursor', async () => {
     // The first page has no match, the second has: the scan continues until the limit, then offers the rest through the cursor.
     const client = eventsClient([[event(OTHER_GATE)], [event(GATE, 'a')], [event(GATE, 'b')]])

@@ -12,7 +12,7 @@
 import { bcs } from '@mysten/sui/bcs'
 import { Transaction } from '@mysten/sui/transactions'
 import { fromBase64, normalizeStructTag, normalizeSuiAddress } from '@mysten/sui/utils'
-import { readIndexerEvents } from '@meddleware/access-gate-client'
+import { asPrunedHistoryError, readIndexerEvents } from '@meddleware/access-gate-client'
 import type { CoreEventEntry, EventCursor, IndexerSource } from '@meddleware/access-gate-client'
 import type { SealPolicyTarget } from './types.js'
 
@@ -234,7 +234,8 @@ const MAX_RPC_PAGES = 20
  * - On the full node, events are filtered here by gate. A page can hold up to one full-node page
  *   more than `limit`, or fewer when `maxPages` pages are scanned without filling it.
  *
- * @throws {Error} if the full node (or, for an indexer cursor, the indexer) fails.
+ * @throws {EventHistoryPrunedError} if the full node no longer keeps the history asked for (see access-gate-client).
+ * @throws {Error} if the full node (or, for an indexer cursor, the indexer) fails otherwise.
  */
 export async function listSealedContent(
   client: SealEventsClient,
@@ -274,12 +275,17 @@ async function listFromRpc(
   let skipped = 0
   let cursor = before
   for (let page = 0; page < maxPages; page++) {
-    const res = await client.core.listEvents({
-      filter: { eventType: sealedContentEventType(options.originalId) },
-      limit: RPC_PAGE,
-      order: 'descending',
-      before: cursor,
-    })
+    // A node that no longer keeps this history is reported as an `EventHistoryPrunedError` (a plain message), not as a raw gRPC failure.
+    const res = await client.core
+      .listEvents({
+        filter: { eventType: sealedContentEventType(options.originalId) },
+        limit: RPC_PAGE,
+        order: 'descending',
+        before: cursor,
+      })
+      .catch((e: unknown) => {
+        throw asPrunedHistoryError(e)
+      })
     for (const entry of res.events) {
       // Keep a pointer only if it is for this gate and from an accepted publisher.
       const pointer = tryParse(entry, options.originalId)

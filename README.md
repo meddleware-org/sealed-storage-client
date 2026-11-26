@@ -277,7 +277,7 @@ npm run test:integration     # live testnet (key servers + full node, ABI drift)
 ```
 
 How to propose a change: [CONTRIBUTING.md](CONTRIBUTING.md). A public full node keeps only recent history, so the live event tests skip when the node answers
-"requested data below earliest available" (the weekly run had failed on it since 2026-11-02).
+"requested data below earliest available" (the weekly run had failed on it since 2026-11-02). `listSealedContent` reports that answer as an `EventHistoryPrunedError` (from `@meddleware/access-gate-client`, re-exported here; `isEventHistoryPruned` tests for it): a plain message for a person, the node's answer as its `cause`.
 
 ### Live nft-gate round trip with negatives (maintainer-run, spends testnet SUI)
 

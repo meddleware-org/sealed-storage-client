@@ -106,7 +106,7 @@ testnet `publishedAt` (public or entry, same type-parameter and parameter counts
 ## Gotchas
 
 - **Public full nodes prune events.** `listEvents` on a quiet package rejects with "requested data below earliest available" instead of returning an empty page. The live
-  tests skip on it (`tests/integration/pruned.ts`); the library lets the error through. The weekly `live.yml` run failed three times (2026-11-02, 11-09, 11-16); the cause was
+  tests skip on it (`tests/integration/pruned.ts`); `listSealedContent` reports it as `EventHistoryPrunedError` (from access-gate-client; needs access-gate-client >= 0.0.14). The weekly `live.yml` run failed three times (2026-11-02, 11-09, 11-16); the cause was
   reproduced on 2026-11-21 and the tests fixed (audit F29).
 - **`src/deployments.ts` is generated.** Edit `scripts/gen-deployments.mjs` (its template carries the comments), never the file; `check:deployments` fails on drift. The committees
   in `src/committees.ts` are hand-written data with one owner and are re-exported by the generated file.

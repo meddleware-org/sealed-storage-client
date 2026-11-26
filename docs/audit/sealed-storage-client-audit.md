@@ -1093,7 +1093,7 @@ of returning an empty page. The test (`decodes every published pointer it scans`
 **Impact:** the suite that guards against drift between this client and the deployed Move package and key servers (ABI, event layout, the time-lock round trip) had been red for three weeks. The
 shipped code was not affected.
 **Remediation / evidence:** `tests/integration/pruned.ts` skips a test when the node answers "below earliest available" (any other error still fails); the test uses it. After the change: 8 passed,
-9 skipped. The library keeps letting the error through (an empty list would hide that history exists); the README says so. The read-indexer (sui-indexer) is the long-term source of history.
+9 skipped. **Update 2026-11-26 (library change):** letting the raw gRPC error through meant an app listing pointers without an indexer, for a quiet package, would show a person `requested data below earliest available`; `listSealedContent` now reports it as `EventHistoryPrunedError` (shared with access-gate-client, plain message, the node's answer as `cause`), with a unit test; it needs access-gate-client 0.0.14 (FU-0201 for the apps). The read-indexer (sui-indexer) is the long-term source of history.
 
 ### F30 — Documentation drift found by the documentation pass
 **Severity:** Low   **Disposition:** RESOLVED (2026-11-21, unreleased)
