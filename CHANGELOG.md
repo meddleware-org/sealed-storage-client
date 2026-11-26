@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.0.28] - 2026-11-26
+
+- Depend on `@meddleware/access-gate-client` ^0.0.14 (the typed pruned-history error it re-exports) and `@meddleware/sealed-storage-sui` 0.0.12 (the generated deployments are unchanged; only the header comment names the new version); peer ranges `@mysten/seal` ^1.5.4 and `@mysten/sui` ^2.39.1; development tools at their latest in-range versions.
+
 ### Changed
 
 - Documentation: every file is annotated line by line and has a header; added `CONTRIBUTING.md` and `AGENTS.md`; README Development section; CLAUDE.md Commands, Gotchas and Related;
