@@ -116,6 +116,10 @@ testnet `publishedAt` (public or entry, same type-parameter and parameter counts
   the controller class too but not the two header helpers.
 - **A new `build*Tx` or policy needs an entry in `tests/abi-table.ts`**, or `tests/abi-table.test.ts` fails.
 
+## Documentation rules (workspace documentation standard, D144)
+
+Every file has a header and every declaration a TSDoc comment (private declarations included); comments say why. `node scripts/check-docs.mjs --report sealed-storage-client` (in the workspace repository) is the gate. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Related
 
 - The audit: [`docs/audit/sealed-storage-client-audit.md`](docs/audit/sealed-storage-client-audit.md).
